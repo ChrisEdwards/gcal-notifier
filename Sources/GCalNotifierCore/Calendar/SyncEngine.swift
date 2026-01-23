@@ -30,6 +30,38 @@ public struct SyncResult: Sendable, Equatable {
     }
 }
 
+// MARK: - MultiCalendarSyncResult
+
+/// Result of syncing multiple calendars concurrently.
+public struct MultiCalendarSyncResult: Sendable {
+    /// Merged events from all successful calendar syncs.
+    public let events: [CalendarEvent]
+    /// Merged filtered events from all successful calendar syncs.
+    public let filteredEvents: [CalendarEvent]
+    /// Per-calendar sync results for successful syncs.
+    public let successfulCalendars: [String: SyncResult]
+    /// Per-calendar errors for failed syncs.
+    public let failedCalendars: [String: CalendarError]
+
+    public init(
+        events: [CalendarEvent],
+        filteredEvents: [CalendarEvent],
+        successfulCalendars: [String: SyncResult],
+        failedCalendars: [String: CalendarError]
+    ) {
+        self.events = events
+        self.filteredEvents = filteredEvents
+        self.successfulCalendars = successfulCalendars
+        self.failedCalendars = failedCalendars
+    }
+
+    /// Whether all calendars synced successfully.
+    public var isFullSuccess: Bool { self.failedCalendars.isEmpty }
+
+    /// Whether at least one calendar synced successfully.
+    public var isPartialSuccess: Bool { !self.successfulCalendars.isEmpty }
+}
+
 // MARK: - SyncEngineDelegate
 
 /// Delegate protocol for receiving sync updates.
@@ -66,6 +98,7 @@ public actor SyncEngine {
     private let eventCache: EventCache
     private let appState: AppStateStore
     private let eventFilter: EventFilter
+    private let healthTracker: CalendarHealthTracker?
     private let logger = Logger.sync
 
     // MARK: - State
@@ -86,16 +119,19 @@ public actor SyncEngine {
     ///   - eventCache: Local storage for events.
     ///   - appState: Storage for sync tokens and app state.
     ///   - eventFilter: Filter for determining which events to alert on.
+    ///   - healthTracker: Optional tracker for per-calendar health monitoring.
     public init(
         calendarClient: GoogleCalendarClient,
         eventCache: EventCache,
         appState: AppStateStore,
-        eventFilter: EventFilter
+        eventFilter: EventFilter,
+        healthTracker: CalendarHealthTracker? = nil
     ) {
         self.calendarClient = calendarClient
         self.eventCache = eventCache
         self.appState = appState
         self.eventFilter = eventFilter
+        self.healthTracker = healthTracker
     }
 
     /// Sets the delegate for receiving sync updates.
@@ -133,6 +169,41 @@ public actor SyncEngine {
             await self.delegate?.syncEngine(self, didFailWithError: calendarError)
             throw calendarError
         }
+    }
+
+    // MARK: - Multi-Calendar Sync
+
+    /// Syncs multiple calendars concurrently using TaskGroup.
+    ///
+    /// Requests are made in parallel, and results are merged. Partial failures are handled
+    /// gracefully - successful calendars return their events while failed calendars are
+    /// tracked separately. Health tracker is updated for each calendar if configured.
+    ///
+    /// - Parameter calendarIds: List of calendar IDs to sync.
+    /// - Returns: Aggregated result with merged events and per-calendar status.
+    /// - Throws: `CancellationError` if the task is cancelled. Individual calendar
+    ///           failures are captured in the result, not thrown.
+    public func syncAllCalendars(_ calendarIds: [String]) async throws -> MultiCalendarSyncResult {
+        guard !self.isSyncing else {
+            throw CalendarError.syncInProgress
+        }
+
+        self.isSyncing = true
+        defer { self.isSyncing = false }
+
+        // Filter out disabled calendars if health tracker is available
+        let enabledCalendars = await self.filterEnabledCalendars(calendarIds)
+
+        guard !enabledCalendars.isEmpty else {
+            return MultiCalendarSyncResult(
+                events: [],
+                filteredEvents: [],
+                successfulCalendars: [:],
+                failedCalendars: [:]
+            )
+        }
+
+        return try await self.performMultiCalendarSync(enabledCalendars)
     }
 
     // MARK: - Polling Interval
@@ -210,5 +281,84 @@ public actor SyncEngine {
         )
 
         return SyncResult(events: response.events, filteredEvents: filteredEvents, wasFullSync: wasFullSync)
+    }
+
+    // MARK: - Multi-Calendar Sync Helpers
+
+    private func filterEnabledCalendars(_ calendarIds: [String]) async -> [String] {
+        guard let healthTracker else { return calendarIds }
+        var enabled: [String] = []
+        for calendarId in calendarIds where await healthTracker.shouldPoll(calendarId) {
+            enabled.append(calendarId)
+        }
+        return enabled
+    }
+
+    private func performMultiCalendarSync(_ calendarIds: [String]) async throws -> MultiCalendarSyncResult {
+        typealias SyncOutcome = (String, Result<SyncResult, CalendarError>)
+
+        let outcomes: [SyncOutcome] = try await withThrowingTaskGroup(of: SyncOutcome.self) { group in
+            for calendarId in calendarIds {
+                try Task.checkCancellation()
+
+                group.addTask {
+                    await self.syncSingleCalendar(calendarId)
+                }
+            }
+
+            var results: [SyncOutcome] = []
+            for try await outcome in group {
+                results.append(outcome)
+            }
+            return results
+        }
+
+        return await self.buildMultiCalendarResult(from: outcomes)
+    }
+
+    private func syncSingleCalendar(_ calendarId: String) async -> (String, Result<SyncResult, CalendarError>) {
+        do {
+            let result = try await self.performSync(calendarId: calendarId)
+            await self.healthTracker?.markSuccess(for: calendarId)
+            return (calendarId, .success(result))
+        } catch let error as CalendarError {
+            await self.healthTracker?.markFailure(for: calendarId, error: error)
+            return (calendarId, .failure(error))
+        } catch {
+            let calendarError = CalendarError.networkError(error.localizedDescription)
+            await self.healthTracker?.markFailure(for: calendarId, error: calendarError)
+            return (calendarId, .failure(calendarError))
+        }
+    }
+
+    private func buildMultiCalendarResult(
+        from outcomes: [(String, Result<SyncResult, CalendarError>)]
+    ) async -> MultiCalendarSyncResult {
+        var allEvents: [CalendarEvent] = []
+        var allFilteredEvents: [CalendarEvent] = []
+        var successfulCalendars: [String: SyncResult] = [:]
+        var failedCalendars: [String: CalendarError] = [:]
+
+        for (calendarId, result) in outcomes {
+            switch result {
+            case let .success(syncResult):
+                allEvents.append(contentsOf: syncResult.events)
+                allFilteredEvents.append(contentsOf: syncResult.filteredEvents)
+                successfulCalendars[calendarId] = syncResult
+            case let .failure(error):
+                failedCalendars[calendarId] = error
+            }
+        }
+
+        self.logger.info(
+            "Multi-sync complete: \(successfulCalendars.count) ok, \(failedCalendars.count) failed"
+        )
+
+        return MultiCalendarSyncResult(
+            events: allEvents,
+            filteredEvents: allFilteredEvents,
+            successfulCalendars: successfulCalendars,
+            failedCalendars: failedCalendars
+        )
     }
 }
