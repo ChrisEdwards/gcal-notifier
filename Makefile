@@ -1,4 +1,4 @@
-.PHONY: help build build-release test test-parallel check format lint clean start stop package check-test all
+.PHONY: help build build-release test test-parallel check format lint clean start stop package check-test all e2e-test
 
 help: ## Display available make targets
 	@awk 'BEGIN {FS=":.*##"; printf "\nUsage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_\-]+:.*##/ {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -41,6 +41,18 @@ test-parallel: ## Run tests in parallel (quiet output)
 		print_header "GCalNotifier" "Unit tests" && \
 		run_silent_with_test_count "Unit tests passed" "swift test --parallel"; \
 	fi
+
+e2e-test: ## Run E2E test scripts sequentially (interactive)
+	@echo "=== Running E2E Tests ==="
+	@echo "These tests are interactive and require manual verification."
+	@echo "Log output: ~/Library/Logs/gcal-notifier/e2e-tests.log"
+	@echo ""
+	@./Scripts/e2e/test_oauth_flow.sh && \
+	./Scripts/e2e/test_sync_cycle.sh && \
+	./Scripts/e2e/test_alert_timing.sh && \
+	./Scripts/e2e/test_offline_resilience.sh && \
+	echo "" && echo "=== All E2E Tests Passed ===" || \
+	(echo "" && echo "=== E2E Tests Failed ===" && exit 1)
 
 ## Check targets (formatting and linting)
 
