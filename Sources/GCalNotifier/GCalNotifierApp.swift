@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -11,9 +12,17 @@ struct GCalNotifierApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Single instance check will be added later
-        // Menu bar setup will be added later
+        terminateIfAlreadyRunning()
+    }
+
+    private func terminateIfAlreadyRunning() {
+        guard let bundleId = Bundle.main.bundleIdentifier else { return }
+        let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+        if runningApps.count > 1 {
+            NSApp.terminate(nil)
+        }
     }
 }
