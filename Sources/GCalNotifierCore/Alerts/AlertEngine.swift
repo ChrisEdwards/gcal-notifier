@@ -45,6 +45,33 @@ public protocol AlertDelivery: Sendable {
     func deliver(alert: ScheduledAlert) async
 }
 
+// MARK: - Alert Errors
+
+/// Errors that can occur during alert operations.
+public enum AlertError: Error, Equatable, Sendable {
+    /// Cannot snooze - the meeting has already started.
+    case meetingAlreadyStarted
+
+    /// Cannot snooze - the snooze duration would exceed the meeting start time.
+    case snoozePastMeetingStart
+
+    /// The specified alert was not found.
+    case alertNotFound(alertId: String)
+}
+
+extension AlertError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .meetingAlreadyStarted:
+            "The meeting has already started."
+        case .snoozePastMeetingStart:
+            "Cannot snooze past the meeting start time."
+        case let .alertNotFound(alertId):
+            "Alert not found: \(alertId)"
+        }
+    }
+}
+
 /// Central alert scheduling and state management.
 /// Handles two-stage alerts with persistence and recovery support.
 public actor AlertEngine {
@@ -145,6 +172,49 @@ public actor AlertEngine {
     public func acknowledgeAlert(eventId: String) async {
         self.acknowledgedEventIds.insert(eventId)
         await self.cancelAlerts(for: eventId)
+    }
+
+    /// Snoozes an alert by the specified duration.
+    ///
+    /// Reschedules the alert to fire after the snooze duration. Tracks snooze count
+    /// and preserves the original fire time for context.
+    ///
+    /// - Parameters:
+    ///   - alertId: The ID of the alert to snooze.
+    ///   - duration: The snooze duration in seconds (e.g., 60 for 1 minute).
+    /// - Throws: `AlertError.alertNotFound` if the alert doesn't exist.
+    /// - Throws: `AlertError.meetingAlreadyStarted` if the meeting has already started.
+    /// - Throws: `AlertError.snoozePastMeetingStart` if the snooze would fire after the meeting starts.
+    public func snooze(alertId: String, duration: TimeInterval) async throws {
+        guard let existingAlert = self.alerts[alertId] else {
+            throw AlertError.alertNotFound(alertId: alertId)
+        }
+
+        let now = self.dateProvider()
+
+        // Cannot snooze if meeting has already started
+        if existingAlert.eventStartTime <= now {
+            throw AlertError.meetingAlreadyStarted
+        }
+
+        // Calculate new fire time
+        let newFireTime = now.addingTimeInterval(duration)
+
+        // Cannot snooze past meeting start
+        if newFireTime >= existingAlert.eventStartTime {
+            throw AlertError.snoozePastMeetingStart
+        }
+
+        // Create snoozed alert with updated fire time
+        let snoozedAlert = existingAlert.snoozed(until: newFireTime)
+
+        // Cancel the old alert timer
+        await self.scheduler.cancel(alertId: alertId)
+
+        // Schedule the new snoozed alert
+        self.alerts[alertId] = snoozedAlert
+        await self.scheduleTimer(for: snoozedAlert)
+        await self.persistAlerts()
     }
 
     /// Reconciles alerts with a new set of events.
