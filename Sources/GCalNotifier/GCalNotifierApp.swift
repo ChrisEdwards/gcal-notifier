@@ -7,7 +7,7 @@ struct GCalNotifierApp: App {
 
     var body: some Scene {
         Settings {
-            EmptyView()
+            PreferencesView()
         }
     }
 }
