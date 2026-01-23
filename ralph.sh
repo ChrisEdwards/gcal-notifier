@@ -9,7 +9,7 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
-read -r -d '' PROMPT << 'EOF'
+read -r -d '' PROMPT << 'EOF' || true
 Read AGENTS.md so it is fresh in your mind.
 1. **Find the bead to work on:** Use br to find any in-progress bead (which means you started but still need to finish it). If there are no in-progress beads, find the next ready bead.
 2. **Set the bead to in-progress** Set the bead you are working on to in-progress. If this is a child bead of a parent, read the parent bead for context and set the parent to in-progress if it isn't already.
@@ -27,7 +27,7 @@ EOF
 for ((i=1; i<=$1; i++)); do
   echo "=== Ralph iteration $i of $1 ==="
 
-  result=$(claude -p "$PROMPT")
+  result=$(claude --permission-mode acceptEdits -p "$PROMPT")
 
   echo "$result"
 
