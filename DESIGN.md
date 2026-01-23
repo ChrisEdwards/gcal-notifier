@@ -103,8 +103,7 @@ gcal-notifier/
 │       ├── Settings/
 │       │   ├── SettingsStore.swift        # @Observable preferences
 │       │   ├── PreferencesView.swift      # SwiftUI settings window
-│       │   ├── OAuthSetupView.swift       # Credential configuration
-│       │   └── DiagnosticsView.swift      # Debug info and log export
+│       │   └── OAuthSetupView.swift       # Credential configuration
 │       ├── Data/
 │       │   ├── AppStateStore.swift        # Disk-backed application state
 │       │   └── ScheduledAlertsStore.swift # Persisted alert schedule
@@ -226,7 +225,7 @@ GET https://www.googleapis.com/calendar/v3/users/me/calendarList
 - After dismissing an alert: refresh to catch changes
 - On time zone change: immediate refresh
 - Manual "Refresh Now" from menu
-- Full re-sync every 6 hours or on sync invalidation
+- On sync token invalidation (410 response): full re-sync
 
 **Rate limit handling:**
 - Jittered polling with exponential backoff on 403 errors
@@ -299,13 +298,8 @@ Google Calendar stores video links in multiple places. Extract in priority order
 - Microsoft Teams (`teams.microsoft.com`, `teams.live.com`)
 - Webex (`*.webex.com`)
 - Slack Huddles (`slack.com/huddle`)
-- Around (`around.co`)
-- Tuple (`tuple.app`)
-- Discord (`discord.gg`, `discord.com`)
-- Whereby (`whereby.com`)
-- Loom Live (`loom.com/meet`)
 
-Unknown video URLs in `conferenceData` are still used (future-proofs new platforms).
+Unknown video URLs in `conferenceData` are still used (covers niche platforms without hardcoding).
 
 ---
 
@@ -369,18 +363,17 @@ func reconcile(newEvents: [CalendarEvent]) {
 }
 ```
 
-### Configurable Alert Stages
+### Two-Stage Alerts
 
 | Stage | Default | Range | Purpose |
 |-------|---------|-------|---------|
 | 1 | 10 min | 1-60 min | Early warning - wrap up what you're doing |
 | 2 | 2 min | 1-30 min | Urgent reminder - join now |
-| 3 | Off | 1-60 min | Optional extra early warning |
 
-- Each enabled stage fires a modal window + sound
+- Each stage fires a modal window + sound
 - Set to 0 to disable a stage
-- Stages must be in descending order (stage 1 > stage 2 > stage 3)
-- Both stages equally aggressive by default (modal + sound)
+- Stage 1 must be greater than stage 2
+- Both stages equally aggressive (modal + sound)
 
 ### Modal Window
 
@@ -590,15 +583,13 @@ final class SettingsStore {
     // Startup
     @AppStorage("launchAtLogin") var launchAtLogin: Bool = true
 
-    // Alert timing (up to 3 stages, 0 = disabled)
+    // Alert timing (0 = disabled)
     @AppStorage("alertStage1Minutes") var alertStage1Minutes: Int = 10
     @AppStorage("alertStage2Minutes") var alertStage2Minutes: Int = 2
-    @AppStorage("alertStage3Minutes") var alertStage3Minutes: Int = 0
 
     // Sounds
     @AppStorage("stage1Sound") var stage1Sound: String = "gentle-chime"
     @AppStorage("stage2Sound") var stage2Sound: String = "urgent-tone"
-    @AppStorage("stage3Sound") var stage3Sound: String = "gentle-chime"
     @AppStorage("customSoundPath") var customSoundPath: String?
 
     // Filtering (arrays stored as JSON strings)
@@ -662,15 +653,8 @@ final class SettingsStore {
    - OAuth credentials input
    - Sign-in status
    - Sign-out button
-
-6. **Diagnostics**
-   - Last sync time and status
-   - Next scheduled poll
-   - Token expiry countdown
-   - Cache age and event count
-   - Last error (if any)
+   - Last sync time and last error (if any)
    - "Force Full Sync" button
-   - "Export Logs" button
 
 ### Filtering Logic
 
@@ -868,39 +852,22 @@ Check suppression conditions (screen share, DND, in meeting)
 
 ---
 
-## Logging & Observability
+## Logging
 
-### Log Categories
+Use `OSLog` with subsystem `com.gcal-notifier`. Logs appear in Console.app.
 
-| Category | Content |
-|----------|---------|
-| `auth` | OAuth flow, token refresh, credential changes |
-| `sync` | API calls, sync token updates, event parsing |
-| `alerts` | Scheduling, firing, snoozing, dismissal |
-| `ui` | Menu bar updates, modal display, user interactions |
-| `lifecycle` | App start/stop, wake/sleep, state persistence |
+```swift
+import OSLog
+private let logger = Logger(subsystem: "com.gcal-notifier", category: "sync")
+logger.info("Sync completed: \(events.count) events")
+logger.error("Auth failed: \(error.localizedDescription)")
+```
 
-### Log Levels
+**Enabling debug logs:**
+- `defaults write com.gcal-notifier logLevel debug`
+- Or hold Option while clicking "Refresh Now"
 
-| Level | Content |
-|-------|---------|
-| `debug` | Detailed API responses, timer scheduling, event parsing |
-| `info` | OAuth flow steps, successful syncs, alerts fired |
-| `warning` | Rate limits, network issues, recoverable errors |
-| `error` | Auth failures, critical errors |
-
-**Default level:** `info`
-
-### Enabling Debug Logs
-
-- Hold Option while clicking "Refresh Now" in menu
-- Or: `defaults write com.gcal-notifier logLevel debug`
-
-### Log Storage
-
-- Logs written to `~/Library/Logs/gcal-notifier/`
-- Daily rotation
-- Export via Diagnostics tab in Settings
+No custom log files or rotation - Console.app handles this.
 
 ---
 
@@ -934,7 +901,7 @@ Check suppression conditions (screen share, DND, in meeting)
 | 9 | Menu features | Meeting list, conflict detection, context menus |
 | 10 | Advanced alerts | Snooze, combined modals, back-to-back handling |
 | 11 | Global shortcuts | KeyboardShortcuts integration |
-| 12 | Polish | Diagnostics panel, screen share detection, Reschedule button |
+| 12 | Polish | Screen share detection, Reschedule button |
 | 13 | Launch at login | SMAppService integration |
 
 **Rationale:**
