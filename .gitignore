@@ -1,6 +1,9 @@
 # bv (beads viewer) local config and caches
 .bv/
 
+# abacus local config
+.abacus/
+
 # Swift Package Manager
 .build/
 .swiftpm/
