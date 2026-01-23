@@ -4,6 +4,13 @@
 
 set -e
 
+# Play completion sound (macOS)
+play_completion_sound() {
+  if command -v afplay &> /dev/null; then
+    afplay /System/Library/Sounds/Hero.aiff &
+  fi
+}
+
 if [ -z "$1" ]; then
   echo "Usage: $0 <iterations>"
   exit 1
@@ -33,8 +40,10 @@ for ((i=1; i<=$1; i++)); do
 
   if [[ "$result" == *"<promise>COMPLETE</promise>"* ]]; then
     echo "All beads complete, exiting."
+    play_completion_sound
     exit 0
   fi
 done
 
 echo "Completed $1 iterations."
+play_completion_sound
