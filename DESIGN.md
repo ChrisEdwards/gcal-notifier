@@ -10,7 +10,7 @@ Google Calendar notifications are easily missed. Slack notification overload mak
 
 A dedicated menu bar app that:
 - Shows a countdown to your next meeting with a video link
-- Fires configurable multi-stage modal alerts with escalating urgency
+- Fires two-stage modal alerts (configurable timing)
 - Plays distinctive custom sounds that train your brain to recognize "meeting alert"
 - Provides one-click "Join Meeting" from the alert modal or global hotkey
 - Filters out non-meetings automatically (no video link = no alert)
@@ -50,9 +50,8 @@ A dedicated menu bar app that:
 | Package | Purpose |
 |---------|---------|
 | KeyboardShortcuts (sindresorhus) | Global hotkey for "Join Next Meeting" |
-| swift-log (Apple) | Structured logging |
 
-No Sparkle needed initially (personal use, manual updates).
+No Sparkle or external logging libraries needed (OSLog is native).
 
 ### Security Configuration
 
@@ -177,7 +176,9 @@ enum AuthState: Equatable {
 |-------|-----------|--------|
 | unconfigured | 🔑 | Open Settings |
 | configured | 🔑 | Prompt sign-in |
+| authenticating | ⏳ | Show "Signing in..." |
 | authenticated | 📅 | Normal operation |
+| expired | 📅 | Auto-refresh (invisible to user) |
 | invalid | 🔑 | Prompt re-auth |
 
 ### API Usage
@@ -187,7 +188,7 @@ enum AuthState: Equatable {
 GET https://www.googleapis.com/calendar/v3/calendars/{calendarId}/events
   ?timeMin={now}
   &timeMax={now + 24h}
-  ?singleEvents=true
+  &singleEvents=true
   &orderBy=startTime
   &timeZone={user's current time zone}
 ```
@@ -268,6 +269,8 @@ enum CalendarHealth { case healthy, failing, disabled }
 | disabled | No polling until user re-enables |
 
 A calendar becomes `failing` after 3 consecutive errors. User can still see events from healthy calendars even when one calendar fails.
+
+**Persistence:** Only `disabled` state is persisted (user explicitly disabled). `failing` resets to `healthy` on app restart (allows retry after transient network issues).
 
 ### Time Zone Handling
 
@@ -391,7 +394,7 @@ A floating `NSPanel` with properties:
 │  10:00 AM - 10:30 AM                │
 │  👥 8 attendees · You're organizing │
 │                                     │
-│  [Join]  [Snooze ▾]  [Reschedule]  [✕]│
+│  [Join]  [Snooze ▾]  [Open in Cal]  [✕]│
 └─────────────────────────────────────┘
 ```
 
@@ -419,7 +422,7 @@ A floating `NSPanel` with properties:
 **Button actions:**
 - **Join:** Opens meeting URL via `NSWorkspace.shared.open(url)`, closes window
 - **Snooze:** Dropdown with options (1 min, 3 min, 5 min). Reschedules alert.
-- **Reschedule:** Opens `https://calendar.google.com/calendar/r/eventedit/{eventId}` in browser. No write API needed - user edits in Google Calendar, next sync picks up changes.
+- **Open in Cal:** Opens event in Google Calendar web UI. User can reschedule from there.
 - **✕ (Dismiss):** Closes window, marks event acknowledged (no further alerts for this event)
 
 **Snooze behavior:**
@@ -483,7 +486,7 @@ Format: `[icon] [countdown]`
 | Next meeting in 32 minutes | `📅 32m` |
 | Next meeting in 1 hour 15 minutes | `📅 1h 15m` |
 | In meeting, next in 5 minutes | `📅 12m → 5m` |
-| Within alert window (< 10 min) | `🔔 8m` (pulses) |
+| Within alert window (< 10 min) | `🔔 8m` |
 | Alert acknowledged | `✅ 5m` |
 | No upcoming meetings with video links | `📅 --` |
 | Offline | `⚠️ --` |
@@ -544,9 +547,10 @@ func updateStatusItemIfNeeded(_ newText: String) {
   - Shows meeting title and countdown
   - Disabled/hidden when no upcoming meetings
 
-**Right-click context menu on meetings:**
-- Copy Video Link (to clipboard)
-- Open in Google Calendar (opens event in browser)
+**Meeting submenu (click meeting to expand):**
+- Join Meeting (opens video link)
+- Copy Link (to clipboard)
+- Open in Calendar (opens event in browser)
 
 ### Conflict Detection
 
@@ -702,7 +706,7 @@ actor EventCache {
 **Cache behavior:**
 - Update cache after each successful API sync
 - Clear cache when user signs out
-- Cache expires after 24 hours (force full re-sync)
+- On app launch: if last sync > 24 hours ago, clear syncTokens and do full re-sync
 - Survives app restarts
 
 ### Alert Schedule Persistence
@@ -901,7 +905,7 @@ No custom log files or rotation - Console.app handles this.
 | 9 | Menu features | Meeting list, conflict detection, context menus |
 | 10 | Advanced alerts | Snooze, combined modals, back-to-back handling |
 | 11 | Global shortcuts | KeyboardShortcuts integration |
-| 12 | Polish | Screen share detection, Reschedule button |
+| 12 | Polish | Screen share detection, Open in Calendar button |
 | 13 | Launch at login | SMAppService integration |
 
 **Rationale:**
@@ -920,7 +924,7 @@ No custom log files or rotation - Console.app handles this.
 4. **SMAppService** - Requires proper entitlements; may need notarization even for personal use
 5. **Screen share detection** - API availability varies by macOS version
 6. **@AppStorage limitations** - Arrays require JSON encoding; watch for sync issues
-7. **UNUserNotificationCenter** - Requires notification permission; custom category registration on app launch
+7. **UNUserNotificationCenter permission** - If user denies notification permission, alerts won't fire. Request permission on first launch with clear explanation. If denied, show warning in menu but don't build fallback.
 8. **TaskGroup cancellation** - Ensure proper cleanup if app terminates mid-sync
 
 ---
@@ -932,6 +936,5 @@ CodexBar (`../CodexBar`) provides patterns for:
 - `NSStatusItem` with SwiftUI content
 - Keychain credential storage
 - Preferences window with tabs
-- Logging infrastructure (swift-log + OSLog)
 - No-Dock-icon configuration
 - Launch at login via SMAppService
