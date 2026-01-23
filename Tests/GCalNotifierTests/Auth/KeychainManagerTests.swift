@@ -140,6 +140,14 @@ struct KeychainManagerTests {
         KeychainManager(service: self.testService)
     }
 
+    /// Cleans up any leftover test data and returns the manager for use.
+    /// This ensures each test starts with a clean slate.
+    private func createCleanManager() async -> KeychainManager {
+        let manager = KeychainManager(service: self.testService)
+        try? await manager.deleteAll()
+        return manager
+    }
+
     private func cleanup(_ manager: KeychainManager) async {
         try? await manager.deleteAll()
     }
@@ -196,7 +204,7 @@ struct KeychainManagerTests {
 
     @Test("deleteTokens removes from Keychain")
     func deleteTokens() async throws {
-        let manager = self.createManager()
+        let manager = await self.createCleanManager()
         defer { Task { await cleanup(manager) } }
 
         let tokens = OAuthTokens(
@@ -302,7 +310,7 @@ struct KeychainManagerTests {
 
     @Test("deleteClientCredentials throws itemNotFound when not exists")
     func deleteCredentialsNotExists() async throws {
-        let manager = self.createManager()
+        let manager = await self.createCleanManager()
         defer { Task { await cleanup(manager) } }
 
         await #expect(throws: KeychainError.itemNotFound) {
@@ -312,7 +320,7 @@ struct KeychainManagerTests {
 
     @Test("deleteTokens throws itemNotFound when not exists")
     func deleteTokensNotExists() async throws {
-        let manager = self.createManager()
+        let manager = await self.createCleanManager()
         defer { Task { await cleanup(manager) } }
 
         await #expect(throws: KeychainError.itemNotFound) {
