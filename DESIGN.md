@@ -60,6 +60,21 @@ No Sparkle needed initially (personal use, manual updates).
 - **Hardened Runtime:** Enabled
 - **App Sandbox:** Enabled with network + keychain entitlements
 - **Credentials:** Client secret and tokens stored in Keychain only (never on disk)
+- **Keychain Service:** Use explicit `kSecAttrService` = `com.gcal-notifier.auth` for consistent access across builds
+
+### Single Instance Enforcement
+
+Prevent duplicate instances (causes duplicate alerts, cache corruption):
+
+```swift
+// In AppDelegate.applicationDidFinishLaunching
+let running = NSRunningApplication.runningApplications(
+    withBundleIdentifier: Bundle.main.bundleIdentifier!
+)
+if running.count > 1 {
+    NSApp.terminate(nil)
+}
+```
 
 ### Project Structure
 
@@ -135,6 +150,37 @@ class GoogleOAuthProvider: OAuthProvider {
 }
 ```
 
+### Authentication State Machine
+
+Explicit states prevent edge case bugs:
+
+```swift
+enum AuthState: Equatable {
+    case unconfigured       // No credentials entered
+    case configured         // Has credentials, not signed in
+    case authenticating     // OAuth flow in progress
+    case authenticated      // Valid tokens
+    case expired            // Token expired, will auto-refresh
+    case invalid            // Refresh failed, needs re-auth
+}
+
+// State transitions
+// unconfigured → configured (credentials entered)
+// configured → authenticating (sign-in started)
+// authenticating → authenticated (success) or configured (failed)
+// authenticated → expired (token expires)
+// expired → authenticated (refresh success) or invalid (refresh failed)
+// invalid → authenticating (user re-authenticates)
+```
+
+**UI indicators per state:**
+| State | Menu Icon | Action |
+|-------|-----------|--------|
+| unconfigured | 🔑 | Open Settings |
+| configured | 🔑 | Prompt sign-in |
+| authenticated | 📅 | Normal operation |
+| invalid | 🔑 | Prompt re-auth |
+
 ### API Usage
 
 **Initial sync (full fetch):**
@@ -185,6 +231,44 @@ GET https://www.googleapis.com/calendar/v3/users/me/calendarList
 **Rate limit handling:**
 - Jittered polling with exponential backoff on 403 errors
 - Show warning in menu when rate limited
+
+**Multi-calendar sync with TaskGroup:**
+
+```swift
+func syncAllCalendars() async -> [CalendarEvent] {
+    await withTaskGroup(of: (String, Result<[CalendarEvent], Error>).self) { group in
+        for calendarId in enabledCalendars {
+            group.addTask { await self.syncCalendar(calendarId) }
+        }
+
+        var allEvents: [CalendarEvent] = []
+        for await (calendarId, result) in group {
+            switch result {
+            case .success(let events):
+                allEvents.append(contentsOf: events)
+                await healthTracker.markSuccess(calendarId)
+            case .failure(let error):
+                await healthTracker.markFailure(calendarId, error)
+            }
+        }
+        return allEvents
+    }
+}
+```
+
+**Per-calendar health tracking:**
+
+```swift
+enum CalendarHealth { case healthy, failing, disabled }
+```
+
+| Status | Behavior |
+|--------|----------|
+| healthy | Normal polling |
+| failing | 4x slower polling, yellow indicator in menu |
+| disabled | No polling until user re-enables |
+
+A calendar becomes `failing` after 3 consecutive errors. User can still see events from healthy calendars even when one calendar fails.
 
 ### Time Zone Handling
 
@@ -240,22 +324,50 @@ actor AlertEngine {
     func acknowledgeAlert(eventId: String)
 
     // Recovery
-    func reconcileOnWake()
-    func reconcileOnRelaunch()
+    func reconcileOnRelaunch()  // Only needed for app restart
 
     // State
     var scheduledAlerts: [ScheduledAlert]
     var acknowledgedEvents: Set<String>
+    private var pendingNotifications: [String: String] = [:]  // eventId → notificationId
 }
 ```
 
 **Key properties:**
-- Deterministic scheduling (wall-clock based, not timer drift)
+- Uses `UNUserNotificationCenter` for timing (handles sleep/wake, DST, NTP corrections)
 - Persists scheduled alerts to disk
-- Reconciles on wake/relaunch
+- Reconciles on relaunch only (system handles wake scenarios)
 - Guarantees "exactly once" alert delivery
 - Cancels/reschedules on event mutation
 - Tracks acknowledgment state per event
+
+**System notification integration:**
+- Register custom notification category with hidden presentation
+- `UNCalendarNotificationTrigger` schedules alerts at exact times
+- Delegate intercepts delivery and shows custom modal instead
+- System handles timing even during sleep - no Timer drift
+
+**Task cancellation for deleted events:**
+
+When events are removed, cancel their scheduled alerts:
+
+```swift
+func reconcile(newEvents: [CalendarEvent]) {
+    let newIds = Set(newEvents.map { $0.id })
+
+    // Cancel alerts for removed events
+    for (eventId, notificationId) in pendingNotifications {
+        if !newIds.contains(eventId) {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(
+                withIdentifiers: [notificationId]
+            )
+            pendingNotifications.removeValue(forKey: eventId)
+        }
+    }
+
+    // Schedule alerts for new/modified events...
+}
+```
 
 ### Configurable Alert Stages
 
@@ -284,10 +396,20 @@ A floating `NSPanel` with properties:
 │                                     │
 │  Weekly Team Standup                │
 │  10:00 AM - 10:30 AM                │
+│  👥 8 attendees · You're organizing │
 │                                     │
-│  [Join Meeting]  [Snooze ▾]  [Dismiss]│
+│  [Join]  [Snooze ▾]  [Reschedule]  [✕]│
 └─────────────────────────────────────┘
 ```
+
+**Meeting context line variants:**
+| Scenario | Display |
+|----------|---------|
+| You're organizer | 👥 8 attendees · You're organizing |
+| You accepted | 👥 5 attendees · Accepted |
+| You're tentative | 👥 5 attendees · Tentative ⚠️ |
+| 1:1 meeting | 👤 1:1 with Sarah Chen |
+| Interview | 👤 Interview with Alex Kim |
 
 **Combined modal (multiple meetings):**
 ```
@@ -302,9 +424,10 @@ A floating `NSPanel` with properties:
 ```
 
 **Button actions:**
-- **Join Meeting:** Opens meeting URL via `NSWorkspace.shared.open(url)`, closes window
+- **Join:** Opens meeting URL via `NSWorkspace.shared.open(url)`, closes window
 - **Snooze:** Dropdown with options (1 min, 3 min, 5 min). Reschedules alert.
-- **Dismiss:** Closes window, marks event acknowledged (no further alerts for this event)
+- **Reschedule:** Opens `https://calendar.google.com/calendar/r/eventedit/{eventId}` in browser. No write API needed - user edits in Google Calendar, next sync picks up changes.
+- **✕ (Dismiss):** Closes window, marks event acknowledged (no further alerts for this event)
 
 **Snooze behavior:**
 - Snooze replaces remaining scheduled alerts for this event
@@ -344,8 +467,12 @@ A floating `NSPanel` with properties:
 
 When meetings are back-to-back (next meeting starts within 5 minutes of previous ending):
 
-1. **First alert suppression:** Skip the 10-minute warning if user is currently in another meeting
-2. **Transition alert:** Show "Next meeting starting" at end of current meeting
+1. **Downgraded first alert:** If user is in another meeting, the 10-minute warning becomes a passive notification instead of modal:
+   - Plays a subtle sound (different from urgent alert)
+   - Shows macOS notification banner: "Up Next: [Meeting Name] in 10m"
+   - Does not steal keyboard focus
+   - *Rationale: Suppressing entirely risks missing the meeting if current one runs over*
+2. **Transition alert:** Show "Next meeting starting" at end of current meeting (full modal)
 3. **Menu bar indicator:** Show `📅 12m → 5m` format (current ends in 12m, next in 5m)
 
 **Definition of "in a meeting":** Current time is between start and end of a meeting with a video link.
@@ -375,10 +502,24 @@ Format: `[icon] [countdown]`
 |-----------------|-----------------|
 | > 60 minutes | Every 5 minutes |
 | 10-60 minutes | Every minute |
-| 2-10 minutes | Every 15 seconds |
-| < 2 minutes | Every 5 seconds |
+| 2-10 minutes | Every 30 seconds |
+| < 2 minutes | Every 10 seconds |
 
-Use a single `Timer` that adjusts its interval based on time to next event.
+**Status item update implementation:**
+- Single `Timer` that adjusts interval based on time to next event
+- Only update text if value actually changed (prevents flickering)
+- Use monospace digits for stable width: `NSFont.monospacedDigitSystemFont`
+
+```swift
+func updateStatusItemIfNeeded(_ newText: String) {
+    guard newText != currentText else { return }
+    statusItem.button?.attributedTitle = NSAttributedString(
+        string: newText,
+        attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)]
+    )
+    currentText = newText
+}
+```
 
 ### Menu Content
 
@@ -386,9 +527,12 @@ Use a single `Timer` that adjusts its interval based on time to next event.
 ┌─────────────────────────────────────┐
 │  ▶ Join: Weekly Standup    in 8 min │
 │  ────────────────────────────────── │
+│  ⚠️ Conflict at 14:00 (2 meetings)  │
+│  ────────────────────────────────── │
 │  Today's Meetings                   │
 │    ✓ Weekly Standup           10:00 │
-│    ✓ 1:1 with Sarah           14:00 │
+│    ⚠ 1:1 with Sarah           14:00 │
+│    ⚠ Client Call              14:00 │
 │    ○ Team Retro (no link)     16:00 │
 │  ────────────────────────────────── │
 │  ⟳ Refresh Now                      │
@@ -400,11 +544,27 @@ Use a single `Timer` that adjusts its interval based on time to next event.
 
 - ✓ = has video link (will alert)
 - ○ = no video link (won't alert)
+- ⚠ = conflicting meeting (overlaps with another)
 - Click meeting to open its video link directly
 - **"▶ Join:" header** is always visible and clickable
   - Opens next meeting's video link immediately
   - Shows meeting title and countdown
   - Disabled/hidden when no upcoming meetings
+
+**Right-click context menu on meetings:**
+- Copy Video Link (to clipboard)
+- Open in Google Calendar (opens event in browser)
+
+### Conflict Detection
+
+Two events conflict if their time ranges overlap and both will trigger alerts (have video links or force-alert keywords).
+
+**Detection:** Check all events in next 24 hours on each sync completion.
+
+**Display:**
+- Warning banner in menu: `⚠️ Conflict at 14:00 (2 meetings)`
+- Conflicting meetings marked with ⚠ in list
+- Combined alert modal shows both and indicates conflict
 
 ### Global Keyboard Shortcuts
 
@@ -701,10 +861,10 @@ Check suppression conditions (screen share, DND, in meeting)
 
 - Subscribe to `NSWorkspace.didWakeNotification`
 - Immediate calendar refresh (incremental sync)
-- AlertEngine reconciles:
-  - Cancel alerts for past events
-  - Fire "missed" alerts for meetings started < 5 min ago
-  - Reschedule upcoming alerts
+- Alert timing handled automatically by `UNUserNotificationCenter` (survives sleep)
+- AlertEngine checks for missed meetings:
+  - If meeting started < 5 min ago, show "Meeting started!" alert
+  - Otherwise, no action needed - system notifications handle timing correctly
 
 ---
 
@@ -763,30 +923,38 @@ Check suppression conditions (screen share, DND, in meeting)
 
 | Phase | Components | Description |
 |-------|------------|-------------|
-| 1 | Project scaffold | Package.swift, app entry point, LSUIElement config |
-| 2 | Auth infrastructure | OAuthProvider protocol, GoogleOAuthProvider, KeychainManager |
+| 1 | Project scaffold | Package.swift, app entry point, LSUIElement, single instance check |
+| 2 | Auth infrastructure | OAuthProvider, GoogleOAuthProvider, KeychainManager, AuthState machine |
 | 3 | Data persistence | EventCache, ScheduledAlertsStore, AppStateStore |
-| 4 | Sync engine | GoogleCalendarClient, SyncEngine with syncToken |
-| 5 | Settings | SettingsStore (with JSON array handling), basic PreferencesView |
-| 6 | Menu bar UI | StatusItemController, MenuContentView, countdown display |
-| 7 | Alert engine | AlertEngine state machine, AlertWindowController, SoundPlayer |
-| 8 | Filtering | Calendar selection, blocked/force keywords |
-| 9 | Advanced features | Snooze, global shortcuts, back-to-back handling |
-| 10 | Polish | Diagnostics panel, screen share detection, error handling edge cases |
-| 11 | Launch at login | SMAppService integration |
+| 4 | Settings + Filtering | SettingsStore, calendar enable/disable, blocked keywords (early for dev experience) |
+| 5 | Sync engine | GoogleCalendarClient, SyncEngine with syncToken, TaskGroup, per-calendar health |
+| 6 | Menu bar UI | StatusItemController, countdown, debounced updates |
+| 7 | Alert engine | AlertEngine with UNUserNotificationCenter scheduling |
+| 8 | Alert UI | AlertWindowController, SoundPlayer, modal with context |
+| 9 | Menu features | Meeting list, conflict detection, context menus |
+| 10 | Advanced alerts | Snooze, combined modals, back-to-back handling |
+| 11 | Global shortcuts | KeyboardShortcuts integration |
+| 12 | Polish | Diagnostics panel, screen share detection, Reschedule button |
+| 13 | Launch at login | SMAppService integration |
 
-**Rationale:** Auth + storage foundations first, then sync engine rides on stable data layer, then UI, then advanced features.
+**Rationale:**
+- Auth with state machine prevents edge case bugs
+- Early filtering improves development experience (not every event triggers alerts)
+- UNUserNotificationCenter before UI allows reliable background testing
+- Advanced features after core loop is solid
 
 ---
 
 ## Implementation Risk Notes
 
 1. **OAuth token refresh** - Ensure refresh happens proactively (before expiry), not reactively (after 401)
-2. **Keychain access** - Test thoroughly with different macOS security settings
+2. **Keychain access** - Use explicit `kSecAttrService`; test across debug/release builds
 3. **NSPanel behavior** - Verify floating panel across Spaces and full-screen apps
 4. **SMAppService** - Requires proper entitlements; may need notarization even for personal use
 5. **Screen share detection** - API availability varies by macOS version
 6. **@AppStorage limitations** - Arrays require JSON encoding; watch for sync issues
+7. **UNUserNotificationCenter** - Requires notification permission; custom category registration on app launch
+8. **TaskGroup cancellation** - Ensure proper cleanup if app terminates mid-sync
 
 ---
 
