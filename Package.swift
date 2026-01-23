@@ -5,7 +5,7 @@ let package = Package(
     name: "GCalNotifier",
     platforms: [.macOS(.v15)],
     products: [
-        .executable(name: "GCalNotifier", targets: ["GCalNotifier"])
+        .executable(name: "GCalNotifier", targets: ["GCalNotifier"]),
     ],
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.0.0"),
@@ -33,6 +33,6 @@ let package = Package(
             name: "GCalNotifierTests",
             dependencies: ["GCalNotifierCore"],
             path: "Tests/GCalNotifierTests"
-        )
+        ),
     ]
 )

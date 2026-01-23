@@ -14,8 +14,8 @@ struct GCalNotifierApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        terminateIfAlreadyRunning()
+    func applicationDidFinishLaunching(_: Notification) {
+        self.terminateIfAlreadyRunning()
     }
 
     private func terminateIfAlreadyRunning() {

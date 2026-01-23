@@ -1,0 +1,46 @@
+disabled_rules:
+  - trailing_whitespace  # SwiftFormat handles
+  - todo                 # Allow during development
+  - identifier_name      # Allow short closure names
+
+opt_in_rules:
+  - force_unwrapping     # ERROR severity
+  - implicitly_unwrapped_optional
+
+analyzer_rules:
+  - unused_declaration
+  - unused_import
+
+line_length:
+  warning: 120
+  error: 150
+
+file_length:
+  warning: 500
+  error: 1500
+
+function_body_length:
+  warning: 40
+  error: 100
+
+cyclomatic_complexity:
+  warning: 10
+  error: 20
+
+force_unwrapping:
+  severity: error
+
+force_cast:
+  severity: warning
+
+force_try:
+  severity: warning
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - .swiftpm
+  - Scripts
