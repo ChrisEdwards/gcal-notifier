@@ -1,4 +1,4 @@
-.PHONY: help build build-release test test-parallel check format lint clean start stop check-test all
+.PHONY: help build build-release test test-parallel check format lint clean start stop package check-test all
 
 help: ## Display available make targets
 	@awk 'BEGIN {FS=":.*##"; printf "\nUsage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_\-]+:.*##/ {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -86,10 +86,17 @@ all: ## Run format, lint, and tests
 ## App targets
 
 start: ## Build and run the app
-	@swift build && .build/debug/GCalNotifier &
+	@./Scripts/compile_and_run.sh
 
 stop: ## Stop running app instances
-	@pkill -f GCalNotifier || true
+	@./Scripts/kill_app.sh
+
+package: ## Package app as .app bundle (use RELEASE=1 for release build)
+	@if [ -n "$$RELEASE" ]; then \
+		./Scripts/package_app.sh release; \
+	else \
+		./Scripts/package_app.sh debug; \
+	fi
 
 ## Cleanup
 

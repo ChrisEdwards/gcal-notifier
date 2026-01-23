@@ -24,3 +24,6 @@ DerivedData/
 *.o
 *.a
 *.dylib
+
+# Distribution output
+dist/
