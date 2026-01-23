@@ -23,6 +23,7 @@ public actor GoogleCalendarClient {
 
     private let httpClient: HTTPClient
     private let tokenProvider: AccessTokenProvider
+    private let linkExtractor = MeetingLinkExtractor()
 
     // MARK: - Initialization
 
@@ -240,80 +241,16 @@ public actor GoogleCalendarClient {
     }
 
     private func extractMeetingLinks(from item: GoogleEventItem) -> [MeetingLink] {
-        var links: [MeetingLink] = []
-        var seenURLs: Set<String> = []
-
-        self.addConferenceLinks(from: item.conferenceData, to: &links, seenURLs: &seenURLs)
-        self.addLinkIfNew(item.hangoutLink, to: &links, seenURLs: &seenURLs)
-        if let location = item.location { self.addExtractedURL(from: location, to: &links, seenURLs: &seenURLs) }
-        if let desc = item.description { self.addExtractedURLs(from: desc, to: &links, seenURLs: &seenURLs) }
-
-        return links
-    }
-
-    private func addConferenceLinks(
-        from data: GoogleConferenceData?,
-        to links: inout [MeetingLink],
-        seenURLs: inout Set<String>
-    ) {
-        guard let data else { return }
-        for entryPoint in data.entryPoints ?? [] where entryPoint.entryPointType == "video" {
-            addLinkIfNew(entryPoint.uri, to: &links, seenURLs: &seenURLs)
-        }
-    }
-
-    private func addLinkIfNew(_ urlString: String?, to links: inout [MeetingLink], seenURLs: inout Set<String>) {
-        guard let urlString, let url = URL(string: urlString), !seenURLs.contains(urlString) else { return }
-        links.append(MeetingLink(url: url))
-        seenURLs.insert(urlString)
-    }
-
-    private func addExtractedURL(from text: String, to links: inout [MeetingLink], seenURLs: inout Set<String>) {
-        guard let url = extractURL(from: text), !seenURLs.contains(url.absoluteString) else { return }
-        links.append(MeetingLink(url: url))
-        seenURLs.insert(url.absoluteString)
-    }
-
-    private func addExtractedURLs(from text: String, to links: inout [MeetingLink], seenURLs: inout Set<String>) {
-        for url in self.extractMeetingURLs(from: text) where !seenURLs.contains(url.absoluteString) {
-            links.append(MeetingLink(url: url))
-            seenURLs.insert(url.absoluteString)
-        }
-    }
-
-    private func extractURL(from text: String) -> URL? {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
-            return nil
+        let conferenceEntryPoints = item.conferenceData?.entryPoints?.map {
+            ConferenceEntryPoint(entryPointType: $0.entryPointType, uri: $0.uri, label: $0.label)
         }
 
-        let range = NSRange(text.startIndex..., in: text)
-        let matches = detector.matches(in: text, range: range)
-
-        for match in matches {
-            if let url = match.url, isMeetingURL(url) {
-                return url
-            }
-        }
-
-        return nil
-    }
-
-    private func extractMeetingURLs(from text: String) -> [URL] {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
-            return []
-        }
-
-        let range = NSRange(text.startIndex..., in: text)
-        let matches = detector.matches(in: text, range: range)
-
-        return matches.compactMap { match -> URL? in
-            guard let url = match.url, isMeetingURL(url) else { return nil }
-            return url
-        }
-    }
-
-    private func isMeetingURL(_ url: URL) -> Bool {
-        MeetingPlatform.detect(from: url) != .unknown
+        return self.linkExtractor.extractAll(
+            conferenceEntryPoints: conferenceEntryPoints,
+            hangoutLink: item.hangoutLink,
+            location: item.location,
+            description: item.description
+        )
     }
 
     private func parseResponseStatus(from item: GoogleEventItem) -> ResponseStatus {
