@@ -19,7 +19,7 @@ A dedicated menu bar app that:
 
 ## Target Platform
 
-- macOS 14+ (Sonoma)
+- macOS 15+ (Sequoia)
 - Personal use initially (no App Store distribution)
 - User provides their own Google Cloud OAuth credentials
 
@@ -42,7 +42,7 @@ A dedicated menu bar app that:
 
 - **Language:** Swift 6 with SwiftUI
 - **Build:** Swift Package Manager
-- **Target:** macOS 14+ (Sonoma)
+- **Target:** macOS 15+ (Sequoia)
 - **Patterns:** `@Observable` macro, Swift concurrency, SwiftUI lifecycle
 
 ### Dependencies
@@ -50,6 +50,7 @@ A dedicated menu bar app that:
 | Package | Purpose |
 |---------|---------|
 | KeyboardShortcuts (sindresorhus) | Global hotkey for "Join Next Meeting" |
+| MenuBarExtraAccess (orchetect) | Menu bar extra access from SwiftUI |
 
 No Sparkle or external logging libraries needed (OSLog is native).
 
@@ -77,12 +78,27 @@ if running.count > 1 {
 
 ### Project Structure
 
+Two-target architecture: Core (testable, no UI dependencies) + Main (UI/system integration):
+
 ```
 gcal-notifier/
 ├── Sources/
-│   └── GCalNotifier/
-│       ├── GCalNotifierApp.swift          # @main entry, SwiftUI App
-│       ├── AppDelegate.swift              # NSApplicationDelegate, status item setup
+│   ├── GCalNotifier/                      # Main app (thin UI layer)
+│   │   ├── GCalNotifierApp.swift          # @main entry, SwiftUI App
+│   │   ├── AppDelegate.swift              # NSApplicationDelegate, status item setup
+│   │   ├── MenuBar/
+│   │   │   ├── StatusItemController.swift # NSStatusItem management
+│   │   │   └── MenuContentView.swift      # SwiftUI menu content
+│   │   ├── Alerts/
+│   │   │   ├── AlertWindowController.swift# Modal window management
+│   │   │   └── SoundPlayer.swift          # AVFoundation audio playback
+│   │   ├── Settings/
+│   │   │   ├── PreferencesView.swift      # SwiftUI settings window
+│   │   │   └── OAuthSetupView.swift       # Credential configuration
+│   │   └── Resources/
+│   │       └── Sounds/                    # Built-in alert sounds
+│   │
+│   └── GCalNotifierCore/                  # Shared library (testable, no UI)
 │       ├── Auth/
 │       │   ├── OAuthProvider.swift        # Protocol for OAuth abstraction
 │       │   ├── GoogleOAuthProvider.swift  # Google-specific implementation
@@ -93,21 +109,18 @@ gcal-notifier/
 │       │   ├── EventCache.swift           # Local persistence layer
 │       │   └── EventModels.swift          # Event, MeetingLink types
 │       ├── Alerts/
-│       │   ├── AlertEngine.swift          # Central alert state machine
-│       │   ├── AlertWindowController.swift# Modal window management
-│       │   └── SoundPlayer.swift          # AVFoundation audio playback
-│       ├── MenuBar/
-│       │   ├── StatusItemController.swift # NSStatusItem management
-│       │   └── MenuContentView.swift      # SwiftUI menu content
+│       │   └── AlertEngine.swift          # Central alert state machine
 │       ├── Settings/
-│       │   ├── SettingsStore.swift        # @Observable preferences
-│       │   ├── PreferencesView.swift      # SwiftUI settings window
-│       │   └── OAuthSetupView.swift       # Credential configuration
+│       │   └── SettingsStore.swift        # @Observable preferences
 │       ├── Data/
 │       │   ├── AppStateStore.swift        # Disk-backed application state
 │       │   └── ScheduledAlertsStore.swift # Persisted alert schedule
-│       └── Resources/
-│           └── Sounds/                    # Built-in alert sounds
+│       └── Errors/
+│           └── CalendarError.swift        # Typed error definitions
+│
+├── Tests/
+│   └── GCalNotifierTests/                 # Unit tests
+│
 ├── Package.swift
 └── README.md
 ```
