@@ -45,6 +45,20 @@ public protocol AlertDelivery: Sendable {
     func deliver(alert: ScheduledAlert) async
 }
 
+// MARK: - MissedAlertResult
+
+/// Result of checking for a missed alert after wake from sleep.
+public enum MissedAlertResult: Sendable, Equatable {
+    /// The meeting hasn't started yet - fire alert immediately.
+    case fireNow(ScheduledAlert)
+
+    /// The meeting just started (within grace period) - show "Meeting started!" alert.
+    case meetingJustStarted(ScheduledAlert)
+
+    /// The meeting is too old to alert (started more than 5 minutes ago).
+    case tooOld(ScheduledAlert)
+}
+
 // MARK: - Alert Errors
 
 /// Errors that can occur during alert operations.
@@ -248,6 +262,60 @@ public actor AlertEngine {
             self.alerts[alert.id] = alert
             await self.scheduleTimer(for: alert)
         }
+    }
+
+    // MARK: - Missed Alert Handling
+
+    /// Grace period for "meeting just started" alerts (5 minutes).
+    private static let missedAlertGracePeriod: TimeInterval = 5 * 60
+
+    /// Checks for alerts that should have fired during sleep.
+    ///
+    /// Returns missed alerts categorized by how to handle them:
+    /// - `.fireNow`: Meeting hasn't started - fire alert immediately
+    /// - `.meetingJustStarted`: Meeting started <5 min ago - show "Meeting started!" alert
+    /// - `.tooOld`: Meeting started >5 min ago - just remove the alert
+    ///
+    /// Call this after system wake to recover from missed alerts.
+    /// Alerts are delivered through the AlertDelivery delegate and removed from the store.
+    ///
+    /// - Returns: Array of missed alert results for processing by the caller.
+    public func checkForMissedAlerts() async -> [MissedAlertResult] {
+        let now = self.dateProvider()
+        var results: [MissedAlertResult] = []
+
+        // Find alerts that were due in the past (missed during sleep)
+        let missedAlerts = self.alerts.values.filter { $0.scheduledFireTime < now }
+
+        for alert in missedAlerts {
+            let timeSinceMeetingStart = now.timeIntervalSince(alert.eventStartTime)
+            let result: MissedAlertResult
+
+            if timeSinceMeetingStart < 0 {
+                // Meeting hasn't started yet - fire alert now
+                result = .fireNow(alert)
+                await self.delivery.deliver(alert: alert)
+            } else if timeSinceMeetingStart < Self.missedAlertGracePeriod {
+                // Meeting started within grace period - still worth alerting
+                result = .meetingJustStarted(alert)
+                await self.delivery.deliver(alert: alert)
+            } else {
+                // Meeting too old - just clean up
+                result = .tooOld(alert)
+            }
+
+            results.append(result)
+
+            // Remove the processed alert
+            await self.scheduler.cancel(alertId: alert.id)
+            self.alerts.removeValue(forKey: alert.id)
+        }
+
+        if !results.isEmpty {
+            await self.persistAlerts()
+        }
+
+        return results
     }
 
     // MARK: - Private Helpers
