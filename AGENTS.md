@@ -187,7 +187,7 @@ Location: `../optimus-clip`
 ## Lint rules
 Try to obey these rules as you write so you dont have to re-do code when the rules fail linting.
 
-Keep lines under 120 chars. Absolute max is 150.
-Keeep files under 500 lines long. Absolute max length is 1000 lines.
-Keep function bodies less then 40 lines line. Absolute max is 100 lines long.
-Keep cyclomatic complexity below 10. Absolute max is 20.
+Keep lines under 150 chars.
+Keeep files under 1000 lines long.
+Keep function bodies less then 100 lines.long.
+Keep cyclomatic complexity below 20.
