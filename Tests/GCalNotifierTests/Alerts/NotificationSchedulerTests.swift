@@ -282,15 +282,16 @@ struct NotificationSchedulerTests {
         #expect(requestsAfter.isEmpty)
     }
 
-    @Test("Category is registered on initialization")
-    func categoryIsRegisteredOnInitialization() async throws {
+    @Test("Categories are registered on initialization")
+    func categoriesAreRegisteredOnInitialization() async throws {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         _ = await NotificationScheduler(center: mockCenter, delegate: delegate)
 
         let categoryIds = mockCenter.registeredCategoryIdentifiers
-        #expect(categoryIds.count == 1)
-        #expect(categoryIds.first == NotificationScheduler.meetingAlertCategory)
+        #expect(categoryIds.count == 2)
+        #expect(categoryIds.contains(NotificationScheduler.meetingAlertCategory))
+        #expect(categoryIds.contains(NotificationScheduler.backToBackAlertCategory))
     }
 
     @Test("Delegate is set on initialization")

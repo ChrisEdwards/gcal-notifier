@@ -132,6 +132,24 @@ public final class AlertWindowController: NSWindowController {
     private var currentStage: AlertStage?
     private var alertEngine: AlertEngine?
 
+    /// Detects if running in a test environment to avoid showing actual windows.
+    private static var isRunningTests: Bool {
+        // No bundle identifier = running in SPM test environment
+        if Bundle.main.bundleIdentifier == nil { return true }
+        // Check for XCTest (older framework)
+        if NSClassFromString("XCTestCase") != nil { return true }
+        // Check for Swift Testing framework via environment
+        if ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil { return true }
+        if ProcessInfo.processInfo.environment["XCTestSessionIdentifier"] != nil { return true }
+        // Check process name for test runner
+        let processName = ProcessInfo.processInfo.processName.lowercased()
+        if processName.contains("xctest") { return true }
+        // Check if running as test bundle
+        if Bundle.main.bundlePath.contains(".xctest") { return true }
+        if Bundle.main.bundlePath.contains("PackageTests") { return true }
+        return false
+    }
+
     // MARK: - Initialization
 
     public convenience init() {
@@ -244,6 +262,12 @@ public extension AlertWindowController {
         // Size to fit content
         window?.setContentSize(hostingView.fittingSize)
 
+        // Skip showing actual window during tests to prevent UI lockups
+        guard !Self.isRunningTests else {
+            Logger.alerts.debug("Skipping window display in test environment")
+            return
+        }
+
         // Show
         self.positionWindow()
         showWindow(nil)
@@ -285,6 +309,12 @@ public extension AlertWindowController {
 
         // Size to fit content
         window?.setContentSize(hostingView.fittingSize)
+
+        // Skip showing actual window during tests to prevent UI lockups
+        guard !Self.isRunningTests else {
+            Logger.alerts.debug("Skipping window display in test environment")
+            return
+        }
 
         // Show
         self.positionWindow()

@@ -304,22 +304,27 @@ struct MenuEventFilteringTests {
 
     @Test("Sorts events by start time")
     func sortsByStartTime() {
-        let now = Date()
+        // Use morning time to avoid midnight boundary issues
+        let calendar = Calendar.current
+        let now = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: Date())!
         guard let link = makeTestLink() else { return }
         let laterEvent = makeTestEvent(
             id: "later",
             title: "Later Meeting",
-            startTime: now.addingTimeInterval(120 * 60),
+            startTime: now.addingTimeInterval(120 * 60), // 11:00 AM
             meetingLinks: [link]
         )
         let soonerEvent = makeTestEvent(
             id: "sooner",
             title: "Sooner Meeting",
-            startTime: now.addingTimeInterval(30 * 60),
+            startTime: now.addingTimeInterval(30 * 60), // 9:30 AM
             meetingLinks: [link]
         )
         let items = MenuBuilder.buildMenuItems(events: [laterEvent, soonerEvent], conflictingEventIds: [], now: now)
         let meetingItems = items.filter { if case .meeting = $0 { return true }; return false }
+
+        #expect(meetingItems.count >= 2, "Expected at least 2 meeting items, got \(meetingItems.count)")
+        guard meetingItems.count >= 2 else { return }
 
         guard case let .meeting(_, title1, _, _, _) = meetingItems[0],
               case let .meeting(_, title2, _, _, _) = meetingItems[1] else { return }

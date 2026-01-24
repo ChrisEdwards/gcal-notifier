@@ -29,6 +29,24 @@ public final class ShortcutManager {
     /// Shared instance of the ShortcutManager.
     public static let shared = ShortcutManager()
 
+    /// Detects if running in a test environment to avoid showing modal alerts.
+    private static var isRunningTests: Bool {
+        // No bundle identifier = running in SPM test environment
+        if Bundle.main.bundleIdentifier == nil { return true }
+        // Check for XCTest (older framework)
+        if NSClassFromString("XCTestCase") != nil { return true }
+        // Check for Swift Testing framework via environment
+        if ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil { return true }
+        if ProcessInfo.processInfo.environment["XCTestSessionIdentifier"] != nil { return true }
+        // Check process name for test runner
+        let processName = ProcessInfo.processInfo.processName.lowercased()
+        if processName.contains("xctest") { return true }
+        // Check if running as test bundle
+        if Bundle.main.bundlePath.contains(".xctest") { return true }
+        if Bundle.main.bundlePath.contains("PackageTests") { return true }
+        return false
+    }
+
     // MARK: - Dependencies
 
     private var eventCache: EventCache?
@@ -172,6 +190,12 @@ public final class ShortcutManager {
     }
 
     private func showJoinConfirmation(for meeting: CalendarEvent) {
+        // Skip modal alerts during tests to prevent UI lockup
+        guard !Self.isRunningTests else {
+            Logger.shortcuts.debug("Skipping join confirmation in test environment")
+            return
+        }
+
         let timeUntil = self.formatTimeUntil(meeting.startTime)
 
         let alert = NSAlert()
