@@ -38,6 +38,7 @@ struct PreferencesView: View {
 /// General settings including alert timing and startup preferences.
 struct GeneralTab: View {
     @Bindable var settings: SettingsStore
+    @State private var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
 
     var body: some View {
         Form {
@@ -46,7 +47,7 @@ struct GeneralTab: View {
             }
 
             Section("Startup") {
-                Toggle("Launch at login", isOn: self.$settings.launchAtLogin)
+                self.launchAtLoginSection
 
                 Toggle(
                     "Suppress alerts during screen sharing",
@@ -55,6 +56,28 @@ struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+        .task {
+            self.launchAtLoginStatus = LaunchAtLoginManager.shared.checkStatus()
+        }
+    }
+
+    @ViewBuilder
+    private var launchAtLoginSection: some View {
+        let binding = Binding(get: { self.launchAtLoginStatus.isEnabled },
+                              set: { self.launchAtLoginStatus = LaunchAtLoginManager.shared.setEnabled($0) })
+        Toggle("Launch at login", isOn: binding)
+        if case .requiresApproval = self.launchAtLoginStatus {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                Text("Approval required").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Open Settings") { LaunchAtLoginManager.shared.openLoginItemsSettings() }
+                    .buttonStyle(.link).font(.caption)
+            }
+        } else if case let .error(msg) = self.launchAtLoginStatus {
+            Label(msg, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red).font(.caption)
+        }
     }
 
     @ViewBuilder

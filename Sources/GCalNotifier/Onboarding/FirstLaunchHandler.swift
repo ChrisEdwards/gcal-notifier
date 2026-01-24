@@ -154,9 +154,12 @@ public final class FirstLaunchHandler {
     // MARK: - Private Methods
 
     private func enableLaunchAtLoginByDefault() {
-        let settingsStore = SettingsStore()
-        settingsStore.launchAtLogin = true
-        self.logger.debug("Enabled launch at login by default")
+        let status = LaunchAtLoginManager.shared.setEnabled(true)
+        if status.isEnabled {
+            self.logger.debug("Enabled launch at login by default via SMAppService")
+        } else {
+            self.logger.warning("Failed to enable launch at login: \(status.description)")
+        }
     }
 
     private func showSuccessConfirmation() {
