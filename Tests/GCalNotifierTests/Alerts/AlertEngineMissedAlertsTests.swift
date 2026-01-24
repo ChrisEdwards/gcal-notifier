@@ -96,14 +96,14 @@ struct AlertEngineMissedAlertsTests {
         #expect(missedResults.count == 1)
 
         if case let .fireNow(alert) = missedResults.first {
-            #expect(alert.eventId == "event-1")
+            #expect(alert.eventId == event.qualifiedId)
         } else {
             Issue.record("Expected .fireNow result, got \(String(describing: missedResults.first))")
         }
 
         let deliveredAlerts = await delivery.deliveredAlerts
         #expect(deliveredAlerts.count == 1)
-        #expect(deliveredAlerts.first?.eventId == "event-1")
+        #expect(deliveredAlerts.first?.eventId == event.qualifiedId)
     }
 
     // MARK: - Test: Missed alert - meeting just started
@@ -141,7 +141,7 @@ struct AlertEngineMissedAlertsTests {
         #expect(missedResults.count == 1)
 
         if case let .meetingJustStarted(alert) = missedResults.first {
-            #expect(alert.eventId == "event-2")
+            #expect(alert.eventId == event.qualifiedId)
         } else {
             Issue.record("Expected .meetingJustStarted result, got \(String(describing: missedResults.first))")
         }
@@ -185,7 +185,7 @@ struct AlertEngineMissedAlertsTests {
         #expect(missedResults.count == 1)
 
         if case let .tooOld(alert) = missedResults.first {
-            #expect(alert.eventId == "event-3")
+            #expect(alert.eventId == event.qualifiedId)
         } else {
             Issue.record("Expected .tooOld result, got \(String(describing: missedResults.first))")
         }

@@ -97,6 +97,7 @@ struct GoogleCalendarClientTests {
         #expect(response.events[0].id == "event-123")
         #expect(response.events[0].title == "Team Standup")
         #expect(response.nextSyncToken == "sync-token-1")
+        #expect(response.deletedEventIds.isEmpty)
     }
 
     @Test("fetchEvents with syncToken sends token in request")
@@ -108,7 +109,11 @@ struct GoogleCalendarClientTests {
         #expect(requests.count == 1)
         let requestURL = requests[0].url?.absoluteString ?? ""
         #expect(requestURL.contains("syncToken=my-sync-token"))
-        #expect(!requestURL.contains("singleEvents=true"))
+        #expect(requestURL.contains("singleEvents=true"))
+        #expect(requestURL.contains("showDeleted=true"))
+        #expect(!requestURL.contains("orderBy=startTime"))
+        #expect(!requestURL.contains("timeMin="))
+        #expect(!requestURL.contains("timeMax="))
     }
 
     @Test("fetchCalendarList success returns calendars")
@@ -152,6 +157,21 @@ struct GoogleCalendarClientTests {
             Issue.record("Expected rateLimited error")
         } catch let error as CalendarError {
             guard case .rateLimited = error else { Issue.record("Expected rateLimited, got \(error)"); return }
+        }
+    }
+
+    @Test("fetchEvents 403 non-rate-limit throws invalidRequest")
+    func fetchEvents403NonRateLimitedThrowsInvalidRequest() async throws {
+        let ctx = makeCalendarClientTestContext()
+        await ctx.httpClient.queueResponse(
+            data: makeErrorJSON(code: 403, message: "Forbidden", reason: "insufficientPermissions"),
+            statusCode: 403
+        )
+        do {
+            _ = try await ctx.client.fetchEvents(calendarId: "primary")
+            Issue.record("Expected invalidRequest error")
+        } catch let error as CalendarError {
+            guard case .invalidRequest = error else { Issue.record("Expected invalidRequest, got \(error)"); return }
         }
     }
 
@@ -269,5 +289,20 @@ struct GoogleCalendarClientTests {
         await ctx.httpClient.queueResponse(data: makeEventsResponseJSON(events: [eventJSON]), statusCode: 200)
         let response = try await ctx.client.fetchEvents(calendarId: "primary")
         #expect(response.events[0].isOrganizer == true)
+    }
+
+    @Test("fetchEvents captures cancelled events as deletions")
+    func fetchEventsCapturesCancelledEventsAsDeletions() async throws {
+        let ctx = makeCalendarClientTestContext()
+        let cancelledEventJSON = "{\"id\":\"event-cancelled\",\"status\":\"cancelled\"}"
+        let activeEventJSON = makeEventJSON(id: "event-active", summary: "Active Meeting")
+        await ctx.httpClient.queueResponse(
+            data: makeEventsResponseJSON(events: [cancelledEventJSON, activeEventJSON]),
+            statusCode: 200
+        )
+        let response = try await ctx.client.fetchEvents(calendarId: "primary")
+        #expect(response.events.count == 1)
+        #expect(response.events[0].id == "event-active")
+        #expect(response.deletedEventIds == ["event-cancelled"])
     }
 }

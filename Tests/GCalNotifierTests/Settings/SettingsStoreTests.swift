@@ -48,20 +48,20 @@ struct SettingsStoreDefaultValueTests {
         #expect(store.launchAtLogin == true)
     }
 
-    @Test("Default stage1Sound is gentle-chime")
-    func stage1Sound_defaultsToGentleChime() {
+    @Test("Default stage1Sound is glass")
+    func stage1Sound_defaultsToGlass() {
         let defaults = makeTestDefaults()
         let store = SettingsStore(defaults: defaults)
 
-        #expect(store.stage1Sound == "gentle-chime")
+        #expect(store.stage1Sound == "glass")
     }
 
-    @Test("Default stage2Sound is urgent-tone")
-    func stage2Sound_defaultsToUrgentTone() {
+    @Test("Default stage2Sound is hero")
+    func stage2Sound_defaultsToHero() {
         let defaults = makeTestDefaults()
         let store = SettingsStore(defaults: defaults)
 
-        #expect(store.stage2Sound == "urgent-tone")
+        #expect(store.stage2Sound == "hero")
     }
 
     @Test("Default customSoundPath is nil")
@@ -308,7 +308,7 @@ struct SettingsStoreValueUpdateTests {
         #expect(store.alertStage1Minutes == 20)
         #expect(store.alertStage2Minutes == 2) // Default unchanged
         #expect(store.stage1Sound == "custom-sound")
-        #expect(store.stage2Sound == "urgent-tone") // Default unchanged
+        #expect(store.stage2Sound == "hero") // Default unchanged
         #expect(store.blockedKeywords == ["lunch"])
         #expect(store.forceAlertKeywords == ["Interview", "IMPORTANT"]) // Default unchanged
         #expect(store.launchAtLogin == false)

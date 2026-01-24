@@ -33,8 +33,8 @@ struct AlertEngineScheduleAlertsTests {
         #expect(scheduled.count == 2)
 
         let alertIds = scheduled.map(\.alertId)
-        #expect(alertIds.contains("event-1-stage1"))
-        #expect(alertIds.contains("event-1-stage2"))
+        #expect(alertIds.contains(event.alertIdentifier(for: .stage1)))
+        #expect(alertIds.contains(event.alertIdentifier(for: .stage2)))
     }
 
     @Test("Schedule alerts with stage 1 disabled only schedules stage 2")
@@ -61,7 +61,7 @@ struct AlertEngineScheduleAlertsTests {
 
         let scheduled = await scheduler.scheduledAlerts
         #expect(scheduled.count == 1)
-        #expect(scheduled.first?.alertId == "event-1-stage2")
+        #expect(scheduled.first?.alertId == event.alertIdentifier(for: .stage2))
     }
 
     @Test("Schedule alerts fires at correct time")
@@ -88,11 +88,11 @@ struct AlertEngineScheduleAlertsTests {
 
         let scheduled = await scheduler.scheduledAlerts
 
-        let stage1 = scheduled.first { $0.alertId == "event-1-stage1" }
+        let stage1 = scheduled.first { $0.alertId == event.alertIdentifier(for: .stage1) }
         let expectedStage1 = eventStart.addingTimeInterval(-10 * 60)
         #expect(stage1?.fireDate == expectedStage1)
 
-        let stage2 = scheduled.first { $0.alertId == "event-1-stage2" }
+        let stage2 = scheduled.first { $0.alertId == event.alertIdentifier(for: .stage2) }
         let expectedStage2 = eventStart.addingTimeInterval(-2 * 60)
         #expect(stage2?.fireDate == expectedStage2)
     }
@@ -121,7 +121,7 @@ struct AlertEngineScheduleAlertsTests {
 
         let scheduled = await scheduler.scheduledAlerts
         #expect(scheduled.count == 1)
-        #expect(scheduled.first?.alertId == "event-1-stage2")
+        #expect(scheduled.first?.alertId == event.alertIdentifier(for: .stage2))
     }
 
     @Test("Schedule alerts for event already started schedules nothing")
@@ -228,11 +228,11 @@ struct AlertEngineCancelAlertsTests {
         let settings = try makeAlertTestSettings()
 
         await engine.scheduleAlerts(for: [event], settings: settings)
-        await engine.cancelAlerts(for: "event-1")
+        await engine.cancelAlerts(for: event.qualifiedId)
 
         let cancelled = await scheduler.cancelledAlertIds
-        #expect(cancelled.contains("event-1-stage1"))
-        #expect(cancelled.contains("event-1-stage2"))
+        #expect(cancelled.contains(event.alertIdentifier(for: .stage1)))
+        #expect(cancelled.contains(event.alertIdentifier(for: .stage2)))
 
         let remaining = await engine.scheduledAlerts
         #expect(remaining.isEmpty)
@@ -264,10 +264,10 @@ struct AlertEngineAcknowledgeAlertTests {
         let settings = try makeAlertTestSettings()
 
         await engine.scheduleAlerts(for: [event], settings: settings)
-        await engine.acknowledgeAlert(eventId: "event-1")
+        await engine.acknowledgeAlert(eventId: event.qualifiedId)
 
         let acknowledged = await engine.acknowledgedEvents
-        #expect(acknowledged.contains("event-1"))
+        #expect(acknowledged.contains(event.qualifiedId))
 
         let remaining = await engine.scheduledAlerts
         #expect(remaining.isEmpty)
@@ -293,7 +293,7 @@ struct AlertEngineAcknowledgeAlertTests {
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
         let settings = try makeAlertTestSettings()
 
-        await engine.acknowledgeAlert(eventId: "event-1")
+        await engine.acknowledgeAlert(eventId: event.qualifiedId)
         await scheduler.reset()
 
         await engine.scheduleAlerts(for: [event], settings: settings)

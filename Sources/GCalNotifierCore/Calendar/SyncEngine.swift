@@ -321,17 +321,22 @@ public actor SyncEngine {
             try await self.appState.setSyncToken(newToken, for: calendarId)
         }
 
-        // Save events to cache
-        try await self.eventCache.save(response.events)
-
-        // Apply filter to determine which events should alert
-        let filteredEvents = response.events.filter { self.eventFilter.shouldAlert(for: $0) }
-
-        self.logger.info(
-            "Sync complete: \(response.events.count) events, \(filteredEvents.count) alertable"
+        // Merge events into cache (preserve other calendars, handle deletions).
+        try await self.eventCache.merge(
+            events: response.events,
+            deletedEventIds: response.deletedEventIds,
+            for: calendarId,
+            isFullSync: wasFullSync
         )
 
-        return SyncResult(events: response.events, filteredEvents: filteredEvents, wasFullSync: wasFullSync)
+        let mergedEvents = try await self.eventCache.events(forCalendar: calendarId)
+        let filteredEvents = mergedEvents.filter { self.eventFilter.shouldAlert(for: $0) }
+
+        self.logger.info(
+            "Sync complete: \(mergedEvents.count) events, \(filteredEvents.count) alertable"
+        )
+
+        return SyncResult(events: mergedEvents, filteredEvents: filteredEvents, wasFullSync: wasFullSync)
     }
 
     // MARK: - Multi-Calendar Sync Helpers

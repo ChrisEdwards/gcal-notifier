@@ -287,6 +287,25 @@ struct EventCacheUpdateTests {
         #expect(loaded.contains { $0.id == "event-2" })
     }
 
+    @Test("Update does not overwrite events from other calendars")
+    func updateDoesNotOverwriteOtherCalendarEvents() async throws {
+        let fileURL = makeTempFileURL()
+        defer { cleanupTempDir(fileURL) }
+
+        let cache = EventCache(fileURL: fileURL)
+        let event1 = makeTestEvent(id: "event-1", calendarId: "cal-1", title: "Calendar 1")
+        let event2 = makeTestEvent(id: "event-1", calendarId: "cal-2", title: "Calendar 2")
+        try await cache.save([event1, event2])
+
+        let updatedEvent2 = makeTestEvent(id: "event-1", calendarId: "cal-2", title: "Updated Calendar 2")
+        try await cache.update(updatedEvent2)
+
+        let loaded = try await cache.load()
+        #expect(loaded.count == 2)
+        #expect(loaded.contains { $0.calendarId == "cal-1" && $0.title == "Calendar 1" })
+        #expect(loaded.contains { $0.calendarId == "cal-2" && $0.title == "Updated Calendar 2" })
+    }
+
     @Test("Remove deletes event")
     func removeDeletesEvent() async throws {
         let fileURL = makeTempFileURL()
@@ -297,12 +316,29 @@ struct EventCacheUpdateTests {
         let event2 = makeTestEvent(id: "event-2", title: "Remove")
 
         try await cache.save([event1, event2])
-        try await cache.remove(eventId: "event-2")
+        try await cache.remove(eventId: "event-2", calendarId: "primary")
 
         let loaded = try await cache.load()
 
         #expect(loaded.count == 1)
         #expect(loaded.first?.id == "event-1")
+    }
+
+    @Test("Remove only deletes event for matching calendar")
+    func removeOnlyDeletesMatchingCalendar() async throws {
+        let fileURL = makeTempFileURL()
+        defer { cleanupTempDir(fileURL) }
+
+        let cache = EventCache(fileURL: fileURL)
+        let event1 = makeTestEvent(id: "event-1", calendarId: "cal-1", title: "Keep")
+        let event2 = makeTestEvent(id: "event-1", calendarId: "cal-2", title: "Remove")
+
+        try await cache.save([event1, event2])
+        try await cache.remove(eventId: "event-1", calendarId: "cal-2")
+
+        let loaded = try await cache.load()
+        #expect(loaded.count == 1)
+        #expect(loaded.first?.calendarId == "cal-1")
     }
 
     @Test("Remove nonexistent event does not throw")
@@ -314,7 +350,7 @@ struct EventCacheUpdateTests {
         let event = makeTestEvent(id: "event-1")
         try await cache.save([event])
 
-        try await cache.remove(eventId: "nonexistent")
+        try await cache.remove(eventId: "nonexistent", calendarId: "primary")
 
         let loaded = try await cache.load()
         #expect(loaded.count == 1)

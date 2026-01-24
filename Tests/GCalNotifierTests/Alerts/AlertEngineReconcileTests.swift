@@ -32,13 +32,13 @@ struct AlertEngineReconcileTests {
         await engine.reconcile(newEvents: [event2], settings: settings)
 
         let cancelled = await scheduler.cancelledAlertIds
-        #expect(cancelled.contains("event-1-stage1"))
-        #expect(cancelled.contains("event-1-stage2"))
+        #expect(cancelled.contains(event1.alertIdentifier(for: .stage1)))
+        #expect(cancelled.contains(event1.alertIdentifier(for: .stage2)))
 
         let remaining = await engine.scheduledAlerts
         let remainingEventIds = Set(remaining.map(\.eventId))
-        #expect(!remainingEventIds.contains("event-1"))
-        #expect(remainingEventIds.contains("event-2"))
+        #expect(!remainingEventIds.contains(event1.qualifiedId))
+        #expect(remainingEventIds.contains(event2.qualifiedId))
     }
 
     @Test("Reconcile clears acknowledgments for deleted events")
@@ -58,8 +58,8 @@ struct AlertEngineReconcileTests {
             dateProvider: { baseTime }
         )
 
-        await engine.acknowledgeAlert(eventId: "event-1")
-        await engine.acknowledgeAlert(eventId: "event-2")
+        await engine.acknowledgeAlert(eventId: "cal-1::event-1")
+        await engine.acknowledgeAlert(eventId: "cal-1::event-2")
 
         let event2 = makeAlertTestEvent(id: "event-2", startTime: eventStart)
         let settings = try makeAlertTestSettings()
@@ -67,8 +67,8 @@ struct AlertEngineReconcileTests {
         await engine.reconcile(newEvents: [event2], settings: settings)
 
         let acknowledged = await engine.acknowledgedEvents
-        #expect(!acknowledged.contains("event-1"))
-        #expect(acknowledged.contains("event-2"))
+        #expect(!acknowledged.contains("cal-1::event-1"))
+        #expect(acknowledged.contains(event2.qualifiedId))
     }
 }
 
@@ -86,7 +86,7 @@ struct AlertEngineReconcileOnRelaunchTests {
 
         let alert = ScheduledAlert(
             id: "persisted-alert",
-            eventId: "event-1",
+            eventId: "cal-1::event-1",
             stage: .stage1,
             scheduledFireTime: futureFireTime,
             snoozeCount: 0,
@@ -128,7 +128,7 @@ struct AlertEngineReconcileOnRelaunchTests {
 
         let alert = ScheduledAlert(
             id: "past-alert",
-            eventId: "event-1",
+            eventId: "cal-1::event-1",
             stage: .stage1,
             scheduledFireTime: pastFireTime,
             snoozeCount: 0,
@@ -168,7 +168,7 @@ struct AlertEngineReconcileOnRelaunchTests {
 
         let alert = ScheduledAlert(
             id: "persisted-alert",
-            eventId: "event-1",
+            eventId: "cal-1::event-1",
             stage: .stage1,
             scheduledFireTime: futureFireTime,
             snoozeCount: 0,
@@ -222,13 +222,13 @@ struct AlertEngineAlertDeliveryTests {
         let settings = try makeAlertTestSettings()
 
         await engine.scheduleAlerts(for: [event], settings: settings)
-        await scheduler.fireAlert(alertId: "event-1-stage1")
+        await scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage1))
 
         try await Task.sleep(nanoseconds: 100_000_000)
 
         let delivered = await delivery.deliveredAlerts
         #expect(delivered.count == 1)
-        #expect(delivered.first?.eventId == "event-1")
+        #expect(delivered.first?.eventId == event.qualifiedId)
         #expect(delivered.first?.stage == .stage1)
         #expect(delivered.first?.eventTitle == "Important Meeting")
     }
@@ -264,8 +264,8 @@ struct AlertEnginePersistenceTests {
         #expect(persisted.count == 2)
 
         let alertIds = Set(persisted.map(\.id))
-        #expect(alertIds.contains("event-1-stage1"))
-        #expect(alertIds.contains("event-1-stage2"))
+        #expect(alertIds.contains(event.alertIdentifier(for: .stage1)))
+        #expect(alertIds.contains(event.alertIdentifier(for: .stage2)))
     }
 
     @Test("Alerts are removed from persistence after cancellation")
@@ -289,7 +289,7 @@ struct AlertEnginePersistenceTests {
         let settings = try makeAlertTestSettings()
 
         await engine.scheduleAlerts(for: [event], settings: settings)
-        await engine.cancelAlerts(for: "event-1")
+        await engine.cancelAlerts(for: event.qualifiedId)
 
         let persisted = try await store.load()
         #expect(persisted.isEmpty)

@@ -164,9 +164,9 @@ struct CalendarErrorTests {
         #expect(CalendarError.from(httpStatusCode: 401) == .authenticationRequired)
     }
 
-    @Test("from(httpStatusCode:) returns rateLimited for 403")
+    @Test("from(httpStatusCode:) returns invalidRequest for 403")
     func fromHttpStatusCode403() {
-        #expect(CalendarError.from(httpStatusCode: 403) == .rateLimited(retryAfter: nil))
+        #expect(CalendarError.from(httpStatusCode: 403) == .invalidRequest("Forbidden"))
     }
 
     @Test("from(httpStatusCode:) returns calendarNotFound for 404 with calendarId")

@@ -16,19 +16,19 @@ struct BuiltInSoundTests {
         #expect(rawValues.count == uniqueRawValues.count)
     }
 
-    @Test("Gentle chime has correct raw value")
-    func gentleChime_hasCorrectRawValue() {
-        #expect(BuiltInSound.gentleChime.rawValue == "gentle-chime")
+    @Test("Glass has correct raw value")
+    func glass_hasCorrectRawValue() {
+        #expect(BuiltInSound.glass.rawValue == "glass")
     }
 
-    @Test("Urgent tone has correct raw value")
-    func urgentTone_hasCorrectRawValue() {
-        #expect(BuiltInSound.urgentTone.rawValue == "urgent-tone")
+    @Test("Hero has correct raw value")
+    func hero_hasCorrectRawValue() {
+        #expect(BuiltInSound.hero.rawValue == "hero")
     }
 
-    @Test("Bell has correct raw value")
-    func bell_hasCorrectRawValue() {
-        #expect(BuiltInSound.bell.rawValue == "bell")
+    @Test("Tink has correct raw value")
+    func tink_hasCorrectRawValue() {
+        #expect(BuiltInSound.tink.rawValue == "tink")
     }
 
     @Test("All cases have display names")
@@ -40,16 +40,16 @@ struct BuiltInSoundTests {
 
     @Test("Display names are human readable")
     func displayNames_areHumanReadable() {
-        #expect(BuiltInSound.gentleChime.displayName == "Gentle Chime")
-        #expect(BuiltInSound.urgentTone.displayName == "Urgent Tone")
-        #expect(BuiltInSound.bell.displayName == "Bell")
+        #expect(BuiltInSound.glass.displayName == "Glass")
+        #expect(BuiltInSound.hero.displayName == "Hero")
+        #expect(BuiltInSound.tink.displayName == "Tink")
     }
 
     @Test("Can create from raw value")
     func canCreate_fromRawValue() {
-        #expect(BuiltInSound(rawValue: "gentle-chime") == .gentleChime)
-        #expect(BuiltInSound(rawValue: "urgent-tone") == .urgentTone)
-        #expect(BuiltInSound(rawValue: "bell") == .bell)
+        #expect(BuiltInSound(rawValue: "glass") == .glass)
+        #expect(BuiltInSound(rawValue: "hero") == .hero)
+        #expect(BuiltInSound(rawValue: "tink") == .tink)
     }
 
     @Test("Invalid raw value returns nil")
@@ -168,7 +168,7 @@ struct SoundPlayerAlertStageIntegrationTests {
     func playAlertSound_stage1_usesStage1Setting() {
         let defaults = self.makeDefaults()
         let settings = SettingsStore(defaults: defaults)
-        settings.stage1Sound = "gentle-chime"
+        settings.stage1Sound = "glass"
 
         // Note: We can't easily test actual playback without sound files in the bundle.
         // This test verifies the settings integration works without crashing.
@@ -184,7 +184,7 @@ struct SoundPlayerAlertStageIntegrationTests {
     func playAlertSound_stage2_usesStage2Setting() {
         let defaults = self.makeDefaults()
         let settings = SettingsStore(defaults: defaults)
-        settings.stage2Sound = "urgent-tone"
+        settings.stage2Sound = "hero"
 
         let player = SoundPlayer()
         player.playAlertSound(for: .stage2, settings: settings)
@@ -227,20 +227,20 @@ struct SoundPlayerSettingsDefaultSoundTests {
         return defaults
     }
 
-    @Test("Default stage1 sound matches gentle-chime built-in")
+    @Test("Default stage1 sound matches glass built-in")
     func defaultStage1Sound_matchesBuiltIn() {
         let defaults = self.makeDefaults()
         let settings = SettingsStore(defaults: defaults)
 
-        #expect(settings.stage1Sound == BuiltInSound.gentleChime.rawValue)
+        #expect(settings.stage1Sound == BuiltInSound.glass.rawValue)
     }
 
-    @Test("Default stage2 sound matches urgent-tone built-in")
+    @Test("Default stage2 sound matches hero built-in")
     func defaultStage2Sound_matchesBuiltIn() {
         let defaults = self.makeDefaults()
         let settings = SettingsStore(defaults: defaults)
 
-        #expect(settings.stage2Sound == BuiltInSound.urgentTone.rawValue)
+        #expect(settings.stage2Sound == BuiltInSound.hero.rawValue)
     }
 
     @Test("All built-in sounds have matching raw values for settings")
@@ -248,8 +248,8 @@ struct SoundPlayerSettingsDefaultSoundTests {
         // Verify that the built-in sounds can be used with the settings store
         let validSoundNames = BuiltInSound.allCases.map(\.rawValue)
 
-        #expect(validSoundNames.contains("gentle-chime"))
-        #expect(validSoundNames.contains("urgent-tone"))
-        #expect(validSoundNames.contains("bell"))
+        #expect(validSoundNames.contains("glass"))
+        #expect(validSoundNames.contains("hero"))
+        #expect(validSoundNames.contains("tink"))
     }
 }

@@ -87,7 +87,7 @@ struct AlertEnginePresentationModeTests {
         await context.engine.scheduleAlerts(for: [event], settings: settings)
 
         // Fire the alert
-        await context.scheduler.fireAlert(alertId: "\(event.id)-stage1")
+        await context.scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage1))
 
         // Wait for async handling
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -118,7 +118,7 @@ struct AlertEnginePresentationModeTests {
         await context.engine.scheduleAlerts(for: [event], settings: settings)
 
         // Fire the alert
-        await context.scheduler.fireAlert(alertId: "\(event.id)-stage1")
+        await context.scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage1))
 
         // Wait for async handling
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -145,7 +145,7 @@ struct AlertEnginePresentationModeTests {
         await context.engine.scheduleAlerts(for: [event], settings: settings)
 
         // Fire the alert
-        await context.scheduler.fireAlert(alertId: "\(event.id)-stage1")
+        await context.scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage1))
 
         // Wait for async handling
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -172,7 +172,7 @@ struct AlertEnginePresentationModeTests {
         await context.engine.scheduleAlerts(for: [event], settings: settings)
 
         // Fire the alert
-        await context.scheduler.fireAlert(alertId: "\(event.id)-stage1")
+        await context.scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage1))
 
         // Wait for async handling
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -209,7 +209,7 @@ struct AlertEnginePresentationModeTests {
         await context.engine.scheduleAlerts(for: [event], settings: settings)
 
         // Fire the alert
-        await context.scheduler.fireAlert(alertId: "\(event.id)-stage1")
+        await context.scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage1))
 
         // Wait for async handling
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -245,7 +245,7 @@ struct AlertEnginePresentationModeTests {
         await context.engine.scheduleAlerts(for: [event], settings: settings)
 
         // Fire the alert
-        await context.scheduler.fireAlert(alertId: "\(event.id)-stage1")
+        await context.scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage1))
 
         // Wait for async handling
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -273,7 +273,7 @@ struct AlertEnginePresentationModeTests {
         await context.engine.scheduleAlerts(for: [event], settings: settings)
 
         // Fire the stage 2 alert
-        await context.scheduler.fireAlert(alertId: "\(event.id)-stage2")
+        await context.scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage2))
 
         // Wait for async handling
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -297,7 +297,7 @@ struct AlertEnginePresentationModeTests {
         await context.engine.scheduleAlerts(for: [event], settings: settings)
 
         // Fire the alert
-        await context.scheduler.fireAlert(alertId: "\(event.id)-stage1")
+        await context.scheduler.fireAlert(alertId: event.alertIdentifier(for: .stage1))
 
         // Wait for async handling
         try await Task.sleep(nanoseconds: 100_000_000)

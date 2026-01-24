@@ -141,30 +141,28 @@ struct GeneralTab: View {
 /// Sound settings for alert stages.
 struct SoundsTab: View {
     @Bindable var settings: SettingsStore
-    @State private var isPlayingStage1 = false
-    @State private var isPlayingStage2 = false
-
-    private let builtInSounds = [
-        "gentle-chime": "Gentle Chime",
-        "urgent-tone": "Urgent Tone",
-        "soft-bell": "Soft Bell",
-        "digital-alert": "Digital Alert",
-        "system-default": "System Default",
-    ]
 
     var body: some View {
         Form {
-            Section("Stage 1 Sound") {
-                self.soundPicker(
+            Section {
+                SoundCard(
+                    title: "Stage 1 Alert",
+                    subtitle: "First reminder before meeting",
+                    icon: "bell",
+                    iconColor: .blue,
                     selection: self.$settings.stage1Sound,
-                    isPlaying: self.$isPlayingStage1
+                    customSoundPath: self.settings.customSoundPath
                 )
             }
 
-            Section("Stage 2 Sound") {
-                self.soundPicker(
+            Section {
+                SoundCard(
+                    title: "Stage 2 Alert",
+                    subtitle: "Urgent reminder before meeting",
+                    icon: "bell.badge.fill",
+                    iconColor: .orange,
                     selection: self.$settings.stage2Sound,
-                    isPlaying: self.$isPlayingStage2
+                    customSoundPath: self.settings.customSoundPath
                 )
             }
 
@@ -176,57 +174,51 @@ struct SoundsTab: View {
     }
 
     @ViewBuilder
-    private func soundPicker(selection: Binding<String>, isPlaying _: Binding<Bool>) -> some View {
-        HStack {
-            Picker("Sound", selection: selection) {
-                ForEach(Array(self.builtInSounds.keys.sorted()), id: \.self) { key in
-                    Text(self.builtInSounds[key] ?? key).tag(key)
-                }
-                if self.settings.customSoundPath != nil {
-                    Text("Custom Sound").tag("custom")
-                }
-            }
-
-            Button {
-                self.playSound(selection.wrappedValue)
-            } label: {
-                Image(systemName: "play.circle")
-            }
-            .buttonStyle(.borderless)
-            .help("Test sound")
-        }
-    }
-
-    @ViewBuilder
     private var customSoundSection: some View {
-        HStack {
-            if let path = settings.customSoundPath {
-                Text(URL(fileURLWithPath: path).lastPathComponent)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            } else {
-                Text("No custom sound selected")
-                    .foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: self.settings.customSoundPath != nil ? "music.note" : "music.note.list")
+                    .font(.title2)
+                    .foregroundStyle(self.settings.customSoundPath != nil ? .green : .secondary)
+                    .frame(width: 28)
 
-            Spacer()
-
-            Button("Choose...") {
-                self.selectCustomSound()
-            }
-
-            if self.settings.customSoundPath != nil {
-                Button("Clear") {
-                    self.settings.customSoundPath = nil
+                VStack(alignment: .leading, spacing: 2) {
+                    if let path = settings.customSoundPath {
+                        Text(URL(fileURLWithPath: path).lastPathComponent)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text("Custom sound loaded")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("No custom sound")
+                            .foregroundStyle(.secondary)
+                        Text("Add your own audio file")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
+
+                Spacer()
+
+                if self.settings.customSoundPath != nil {
+                    Button {
+                        self.settings.customSoundPath = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove custom sound")
+                }
+
+                Button("Choose...") {
+                    self.selectCustomSound()
+                }
+                .controlSize(.small)
             }
         }
-    }
-
-    private func playSound(_: String) {
-        // TODO: Implement sound playback via SoundPlayer
-        NSSound.beep()
     }
 
     private func selectCustomSound() {
@@ -237,6 +229,81 @@ struct SoundsTab: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             self.settings.customSoundPath = url.path
+        }
+    }
+}
+
+/// A styled card component for sound selection with preview capability.
+private struct SoundCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let iconColor: Color
+    @Binding var selection: String
+    let customSoundPath: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: self.icon)
+                    .font(.title2)
+                    .foregroundStyle(self.iconColor)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(self.title)
+                        .fontWeight(.medium)
+                    Text(self.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                Picker("", selection: self.$selection) {
+                    ForEach(BuiltInSound.allCases, id: \.rawValue) { sound in
+                        Label(sound.displayName, systemImage: self.soundIcon(for: sound))
+                            .tag(sound.rawValue)
+                    }
+                    if self.customSoundPath != nil {
+                        Divider()
+                        Label("Custom Sound", systemImage: "music.note")
+                            .tag("custom")
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+
+                Button {
+                    SoundPlayer.shared.play(named: self.selection, customPath: self.customSoundPath)
+                } label: {
+                    Image(systemName: "play.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(self.iconColor)
+                }
+                .buttonStyle(.borderless)
+                .help("Preview sound")
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func soundIcon(for sound: BuiltInSound) -> String {
+        switch sound {
+        case .glass: "drop.fill"
+        case .hero: "star.fill"
+        case .ping: "bell.fill"
+        case .pop: "bubble.fill"
+        case .funk: "guitars.fill"
+        case .blow: "wind"
+        case .bottle: "waterbottle.fill"
+        case .purr: "cat.fill"
+        case .submarine: "water.waves"
+        case .tink: "wand.and.stars"
         }
     }
 }
@@ -404,96 +471,5 @@ struct FilteringTab: View {
         }
         keywords.wrappedValue.append(keyword)
         newKeyword.wrappedValue = ""
-    }
-}
-
-// MARK: - Account Tab
-
-/// OAuth account management and sync status.
-struct AccountTab: View {
-    @State private var authState: AuthState = .unconfigured
-    @State private var lastSyncTime: Date?
-    @State private var lastSyncError: String?
-    @State private var isLoadingSync = false
-
-    private let oauthProvider: GoogleOAuthProvider
-
-    init(oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider()) {
-        self.oauthProvider = oauthProvider
-    }
-
-    var body: some View {
-        Form {
-            Section("Google Account") {
-                OAuthSetupView(oauthProvider: self.oauthProvider)
-            }
-
-            Section("Sync Status") {
-                self.syncStatusSection
-            }
-        }
-        .formStyle(.grouped)
-        .task {
-            await self.loadSyncStatus()
-        }
-    }
-
-    @ViewBuilder
-    private var syncStatusSection: some View {
-        LabeledContent("Last sync") {
-            if let lastSync = lastSyncTime {
-                Text(self.formatDate(lastSync))
-            } else {
-                Text("Never")
-                    .foregroundStyle(.secondary)
-            }
-        }
-
-        if let error = lastSyncError {
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
-                Text(error)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-
-        Button("Force Full Sync") {
-            Task { await self.forceFullSync() }
-        }
-        .disabled(self.isLoadingSync || !self.authState.canMakeApiCalls)
-        .help("Clears all sync tokens and performs a fresh calendar sync")
-    }
-
-    private func formatDate(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
-    }
-
-    private func loadSyncStatus() async {
-        self.authState = await self.oauthProvider.state
-
-        do {
-            let appState = try AppStateStore()
-            self.lastSyncTime = try await appState.getLastFullSync()
-        } catch {
-            self.lastSyncError = "Failed to load sync status"
-        }
-    }
-
-    private func forceFullSync() async {
-        self.isLoadingSync = true
-        defer { self.isLoadingSync = false }
-
-        do {
-            let appState = try AppStateStore()
-            try await appState.clearAllSyncTokens()
-            self.lastSyncError = nil
-            // TODO: Trigger actual sync via SyncEngine when available
-        } catch {
-            self.lastSyncError = "Failed to clear sync tokens: \(error.localizedDescription)"
-        }
     }
 }

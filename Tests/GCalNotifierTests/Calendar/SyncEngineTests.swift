@@ -164,11 +164,17 @@ private actor TestSyncEngine {
             try await self.appState.setSyncToken(newToken, for: calendarId)
         }
 
-        try await self.eventCache.save(response.events)
+        try await self.eventCache.merge(
+            events: response.events,
+            deletedEventIds: response.deletedEventIds,
+            for: calendarId,
+            isFullSync: wasFullSync
+        )
 
-        let filteredEvents = response.events.filter { self.eventFilter.shouldAlert(for: $0) }
+        let mergedEvents = try await self.eventCache.events(forCalendar: calendarId)
+        let filteredEvents = mergedEvents.filter { self.eventFilter.shouldAlert(for: $0) }
 
-        return SyncResult(events: response.events, filteredEvents: filteredEvents, wasFullSync: wasFullSync)
+        return SyncResult(events: mergedEvents, filteredEvents: filteredEvents, wasFullSync: wasFullSync)
     }
 
     func getMockCallCount() async -> Int {
@@ -350,6 +356,38 @@ struct SyncEngineTests {
         let result = try await ctx.engine.sync(calendarId: "primary")
 
         #expect(result.wasFullSync == false)
+    }
+
+    @Test("sync incremental merges new events without dropping existing")
+    func syncIncrementalMergesEvents() async throws {
+        let ctx = try SyncEngineTestContext()
+        let event1 = makeEvent(id: "event-1", title: "First")
+        let event2 = makeEvent(id: "event-2", title: "Second")
+
+        await ctx.mockClient.queueResponse(EventsResponse(events: [event1], nextSyncToken: "token-1"))
+        await ctx.mockClient.queueResponse(EventsResponse(events: [event2], nextSyncToken: "token-2"))
+
+        _ = try await ctx.engine.sync(calendarId: "primary")
+        let result = try await ctx.engine.sync(calendarId: "primary")
+
+        let ids = Set(result.events.map(\.id))
+        #expect(ids == Set(["event-1", "event-2"]))
+    }
+
+    @Test("sync incremental removes deleted events")
+    func syncIncrementalRemovesDeletedEvents() async throws {
+        let ctx = try SyncEngineTestContext()
+        let event = makeEvent(id: "event-1", title: "To Remove")
+
+        await ctx.mockClient.queueResponse(EventsResponse(events: [event], nextSyncToken: "token-1"))
+        _ = try await ctx.engine.sync(calendarId: "primary")
+
+        await ctx.mockClient.queueResponse(
+            EventsResponse(events: [], nextSyncToken: "token-2", deletedEventIds: ["event-1"])
+        )
+
+        let result = try await ctx.engine.sync(calendarId: "primary")
+        #expect(result.events.isEmpty)
     }
 }
 

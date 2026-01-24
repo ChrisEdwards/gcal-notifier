@@ -39,12 +39,12 @@ public final class SettingsStore: @unchecked Sendable {
     // MARK: - Sounds
 
     public var stage1Sound: String {
-        get { self.defaults.string(forKey: Keys.stage1Sound) ?? "gentle-chime" }
+        get { self.defaults.string(forKey: Keys.stage1Sound) ?? "glass" }
         set { self.defaults.set(newValue, forKey: Keys.stage1Sound) }
     }
 
     public var stage2Sound: String {
-        get { self.defaults.string(forKey: Keys.stage2Sound) ?? "urgent-tone" }
+        get { self.defaults.string(forKey: Keys.stage2Sound) ?? "hero" }
         set { self.defaults.set(newValue, forKey: Keys.stage2Sound) }
     }
 

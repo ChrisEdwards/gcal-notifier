@@ -297,3 +297,132 @@ struct OAuthSetupView: View {
         }
     }
 }
+
+struct AccountTab: View {
+    @State private var authState: AuthState = .unconfigured
+    @State private var lastSyncTime: Date?
+    @State private var lastSyncError: String?
+    @State private var isLoadingSync = false
+    @State private var syncStatusMessage: String?
+
+    private let oauthProvider: GoogleOAuthProvider
+
+    init(oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider()) {
+        self.oauthProvider = oauthProvider
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                OAuthSetupView(oauthProvider: self.oauthProvider)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Sync Status")
+                        .font(.headline)
+
+                    self.syncStatusSection
+                }
+                .padding(.horizontal)
+            }
+            .padding()
+        }
+        .task {
+            await self.loadSyncStatus()
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                self.authState = await self.oauthProvider.state
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var syncStatusSection: some View {
+        LabeledContent("Last sync") {
+            if let lastSync = lastSyncTime {
+                Text(self.formatDate(lastSync))
+            } else {
+                Text("Never")
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        if let message = syncStatusMessage {
+            HStack {
+                if self.isLoadingSync {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
+                Text(message)
+                    .foregroundColor(self.isLoadingSync ? .secondary : .green)
+            }
+        }
+
+        if let error = lastSyncError {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(error)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+
+        Button("Force Full Sync") {
+            Task { await self.forceFullSync() }
+        }
+        .disabled(self.isLoadingSync || !self.authState.canMakeApiCalls)
+        .help("Clears all sync tokens and performs a fresh calendar sync")
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private func loadSyncStatus() async {
+        self.authState = await self.oauthProvider.state
+
+        do {
+            let appState = try AppStateStore()
+            self.lastSyncTime = try await appState.getLastFullSync()
+        } catch {
+            self.lastSyncError = "Failed to load sync status"
+        }
+    }
+
+    private func forceFullSync() async {
+        self.isLoadingSync = true
+        self.syncStatusMessage = "Syncing..."
+        self.lastSyncError = nil
+        defer { self.isLoadingSync = false }
+
+        do {
+            let appState = try AppStateStore()
+            try await appState.clearAllSyncTokens()
+
+            let httpClient = URLSessionHTTPClient()
+            let calendarClient = GoogleCalendarClient(httpClient: httpClient, tokenProvider: self.oauthProvider)
+
+            let now = Date()
+            let thirtyDaysFromNow = Calendar.current.date(byAdding: .day, value: 30, to: now) ?? now
+            let response = try await calendarClient.fetchEvents(
+                calendarId: "primary",
+                from: now,
+                to: thirtyDaysFromNow
+            )
+
+            try await appState.setLastFullSync(Date())
+            self.lastSyncTime = Date()
+
+            self.syncStatusMessage = "Synced \(response.events.count) events"
+        } catch {
+            self.lastSyncError = "Sync failed: \(error.localizedDescription)"
+            self.syncStatusMessage = nil
+        }
+    }
+}

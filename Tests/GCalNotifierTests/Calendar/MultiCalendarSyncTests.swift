@@ -164,9 +164,15 @@ private actor MultiCalendarTestSyncEngine {
         if let newToken = response.nextSyncToken {
             try await self.appState.setSyncToken(newToken, for: calendarId)
         }
-        try await self.eventCache.save(response.events)
-        let filteredEvents = response.events.filter { self.eventFilter.shouldAlert(for: $0) }
-        return SyncResult(events: response.events, filteredEvents: filteredEvents, wasFullSync: wasFullSync)
+        try await self.eventCache.merge(
+            events: response.events,
+            deletedEventIds: response.deletedEventIds,
+            for: calendarId,
+            isFullSync: wasFullSync
+        )
+        let mergedEvents = try await self.eventCache.events(forCalendar: calendarId)
+        let filteredEvents = mergedEvents.filter { self.eventFilter.shouldAlert(for: $0) }
+        return SyncResult(events: mergedEvents, filteredEvents: filteredEvents, wasFullSync: wasFullSync)
     }
 
     private func buildMultiCalendarResult(
@@ -392,5 +398,24 @@ struct SyncEngineMultiCalendarTests {
 
         #expect(token1 == "token-1")
         #expect(token2 == "token-2")
+    }
+
+    @Test("sync multiple calendars updates cache per calendar")
+    func syncMultipleCalendarsUpdatesCachePerCalendar() async throws {
+        let ctx = try MultiCalendarTestContext()
+
+        let event1 = makeEvent(id: "event-1", calendarId: "cal-1", title: "Meeting 1")
+        let event2 = makeEvent(id: "event-2", calendarId: "cal-2", title: "Meeting 2")
+
+        await ctx.mockClient.queueResponse(for: "cal-1", EventsResponse(events: [event1], nextSyncToken: "t1"))
+        await ctx.mockClient.queueResponse(for: "cal-2", EventsResponse(events: [event2], nextSyncToken: "t2"))
+
+        _ = try await ctx.engine.syncAllCalendars(["cal-1", "cal-2"])
+
+        let cached = try await ctx.eventCache.load()
+        #expect(cached.count == 2)
+        let cachedKeys = Set(cached.map { "\($0.calendarId):\($0.id)" })
+        #expect(cachedKeys.contains("cal-1:event-1"))
+        #expect(cachedKeys.contains("cal-2:event-2"))
     }
 }

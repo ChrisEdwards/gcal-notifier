@@ -18,6 +18,11 @@ public actor GoogleCalendarClient {
     private static let baseURL = "https://www.googleapis.com/calendar/v3"
     private static let calendarListEndpoint = "/users/me/calendarList"
     private static let eventsEndpoint = "/calendars/{calendarId}/events"
+    private static let calendarIdAllowedCharacters: CharacterSet = {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/")
+        return allowed
+    }()
 
     // MARK: - Dependencies
 
@@ -79,46 +84,16 @@ public actor GoogleCalendarClient {
         syncToken: String? = nil,
         timeZone: TimeZone = .current
     ) async throws -> EventsResponse {
-        let endpoint = Self.eventsEndpoint.replacingOccurrences(of: "{calendarId}", with: calendarId)
-        guard var components = URLComponents(string: Self.baseURL + endpoint) else {
-            throw CalendarError.invalidRequest("Failed to construct events URL")
-        }
-
-        var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "timeZone", value: timeZone.identifier),
-        ]
-
-        if let syncToken {
-            queryItems.append(URLQueryItem(name: "syncToken", value: syncToken))
-        } else {
-            queryItems.append(URLQueryItem(name: "singleEvents", value: "true"))
-            queryItems.append(URLQueryItem(name: "orderBy", value: "startTime"))
-            if let from {
-                queryItems.append(URLQueryItem(name: "timeMin", value: self.formatISO8601(from)))
-            }
-            if let to {
-                queryItems.append(URLQueryItem(name: "timeMax", value: self.formatISO8601(to)))
-            }
-        }
-
-        components.queryItems = queryItems
-
-        guard let url = components.url else {
-            throw CalendarError.invalidRequest("Failed to construct events URL")
-        }
-
+        let url = try self.buildEventsURL(
+            calendarId: calendarId,
+            from: from,
+            to: to,
+            syncToken: syncToken,
+            timeZone: timeZone
+        )
         let request = try await buildRequest(url: url)
         let data = try await executeRequest(request, calendarId: calendarId)
-
-        do {
-            let response = try JSONDecoder.calendarDecoder.decode(GoogleEventsResponse.self, from: data)
-            let events = response.items.compactMap { item in
-                self.parseEvent(from: item, calendarId: calendarId)
-            }
-            return EventsResponse(events: events, nextSyncToken: response.nextSyncToken)
-        } catch {
-            throw CalendarError.parsingError("Failed to parse events: \(error.localizedDescription)")
-        }
+        return try self.parseEventsResponse(data, calendarId: calendarId)
     }
 
     // MARK: - Private Methods
@@ -190,7 +165,13 @@ public actor GoogleCalendarClient {
         guard let errorInfo = try? JSONDecoder().decode(GoogleErrorResponse.self, from: data) else {
             return false
         }
-        return errorInfo.error.errors.contains { $0.reason == "rateLimitExceeded" }
+        let rateLimitReasons: Set<String> = [
+            "rateLimitExceeded",
+            "userRateLimitExceeded",
+            "dailyLimitExceeded",
+            "quotaExceeded",
+        ]
+        return errorInfo.error.errors.contains { rateLimitReasons.contains($0.reason) }
     }
 
     private func formatISO8601(_ date: Date) -> String {
@@ -267,16 +248,109 @@ public actor GoogleCalendarClient {
     }
 }
 
+private extension GoogleCalendarClient {
+    func buildEventsURL(
+        calendarId: String,
+        from: Date?,
+        to: Date?,
+        syncToken: String?,
+        timeZone: TimeZone
+    ) throws -> URL {
+        guard let encodedCalendarId = calendarId.addingPercentEncoding(
+            withAllowedCharacters: Self.calendarIdAllowedCharacters
+        ) else {
+            throw CalendarError.invalidRequest("Failed to encode calendar ID")
+        }
+
+        let endpoint = Self.eventsEndpoint.replacingOccurrences(
+            of: "{calendarId}",
+            with: encodedCalendarId
+        )
+
+        guard var components = URLComponents(string: Self.baseURL + endpoint) else {
+            throw CalendarError.invalidRequest("Failed to construct events URL")
+        }
+
+        components.queryItems = self.eventsQueryItems(
+            from: from,
+            to: to,
+            syncToken: syncToken,
+            timeZone: timeZone
+        )
+
+        guard let url = components.url else {
+            throw CalendarError.invalidRequest("Failed to construct events URL")
+        }
+
+        return url
+    }
+
+    func eventsQueryItems(
+        from: Date?,
+        to: Date?,
+        syncToken: String?,
+        timeZone: TimeZone
+    ) -> [URLQueryItem] {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "timeZone", value: timeZone.identifier),
+            URLQueryItem(name: "singleEvents", value: "true"),
+        ]
+
+        if let syncToken {
+            queryItems.append(URLQueryItem(name: "syncToken", value: syncToken))
+            queryItems.append(URLQueryItem(name: "showDeleted", value: "true"))
+        } else {
+            queryItems.append(URLQueryItem(name: "orderBy", value: "startTime"))
+            if let from {
+                queryItems.append(URLQueryItem(name: "timeMin", value: self.formatISO8601(from)))
+            }
+            if let to {
+                queryItems.append(URLQueryItem(name: "timeMax", value: self.formatISO8601(to)))
+            }
+        }
+
+        return queryItems
+    }
+
+    func parseEventsResponse(_ data: Data, calendarId: String) throws -> EventsResponse {
+        do {
+            let response = try JSONDecoder.calendarDecoder.decode(GoogleEventsResponse.self, from: data)
+            var events: [CalendarEvent] = []
+            var deletedEventIds: [String] = []
+
+            for item in response.items {
+                if item.status == "cancelled" {
+                    deletedEventIds.append(item.id)
+                    continue
+                }
+                if let event = self.parseEvent(from: item, calendarId: calendarId) {
+                    events.append(event)
+                }
+            }
+
+            return EventsResponse(
+                events: events,
+                nextSyncToken: response.nextSyncToken,
+                deletedEventIds: deletedEventIds
+            )
+        } catch {
+            throw CalendarError.parsingError("Failed to parse events: \(error.localizedDescription)")
+        }
+    }
+}
+
 // MARK: - Response Types
 
-/// Response from fetching events, containing events and optional sync token.
+/// Response from fetching events, containing events, deleted IDs, and optional sync token.
 public struct EventsResponse: Sendable, Equatable {
     public let events: [CalendarEvent]
     public let nextSyncToken: String?
+    public let deletedEventIds: [String]
 
-    public init(events: [CalendarEvent], nextSyncToken: String?) {
+    public init(events: [CalendarEvent], nextSyncToken: String?, deletedEventIds: [String] = []) {
         self.events = events
         self.nextSyncToken = nextSyncToken
+        self.deletedEventIds = deletedEventIds
     }
 }
 
@@ -310,6 +384,9 @@ public protocol AccessTokenProvider: Sendable {
     func getAccessToken() async throws -> String
 }
 
+/// GoogleOAuthProvider already implements getAccessToken, so it conforms to AccessTokenProvider
+extension GoogleOAuthProvider: AccessTokenProvider {}
+
 // MARK: - Google API Response Models
 
 private struct CalendarListResponse: Codable {
@@ -339,9 +416,10 @@ private struct GoogleEventItem: Codable {
     let conferenceData: GoogleConferenceData?
     let organizer: GoogleOrganizer?
     let attendees: [GoogleAttendee]?
+    let status: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, summary, description, location, start, end, hangoutLink, conferenceData, organizer, attendees
+        case id, summary, description, location, start, end, hangoutLink, conferenceData, organizer, attendees, status
     }
 }
 

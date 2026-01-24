@@ -78,7 +78,7 @@ public actor EventCache {
     /// Updates an existing event or adds it if not present.
     public func update(_ event: CalendarEvent) async throws {
         try await self.loadIfNeeded()
-        if let index = self.events.firstIndex(where: { $0.id == event.id }) {
+        if let index = self.events.firstIndex(where: { $0.id == event.id && $0.calendarId == event.calendarId }) {
             self.events[index] = event
         } else {
             self.events.append(event)
@@ -86,10 +86,48 @@ public actor EventCache {
         try await self.persist()
     }
 
-    /// Removes an event by its ID.
-    public func remove(eventId: String) async throws {
+    /// Removes an event by its ID scoped to a calendar.
+    public func remove(eventId: String, calendarId: String) async throws {
         try await self.loadIfNeeded()
-        self.events.removeAll { $0.id == eventId }
+        self.events.removeAll { $0.id == eventId && $0.calendarId == calendarId }
+        try await self.persist()
+    }
+
+    /// Merges events for a specific calendar, preserving other calendars.
+    public func merge(
+        events incomingEvents: [CalendarEvent],
+        deletedEventIds: [String],
+        for calendarId: String,
+        isFullSync: Bool
+    ) async throws {
+        try await self.loadIfNeeded()
+
+        if isFullSync {
+            self.events.removeAll { $0.calendarId == calendarId }
+        }
+
+        if !deletedEventIds.isEmpty {
+            let deleted = Set(deletedEventIds)
+            self.events.removeAll { $0.calendarId == calendarId && deleted.contains($0.id) }
+        }
+
+        let scopedEvents = incomingEvents.filter { $0.calendarId == calendarId }
+        if !scopedEvents.isEmpty {
+            var indexById: [String: Int] = [:]
+            for (index, event) in self.events.enumerated() where event.calendarId == calendarId {
+                indexById[event.id] = index
+            }
+
+            for event in scopedEvents {
+                if let index = indexById[event.id] {
+                    self.events[index] = event
+                } else {
+                    self.events.append(event)
+                    indexById[event.id] = self.events.count - 1
+                }
+            }
+        }
+
         try await self.persist()
     }
 

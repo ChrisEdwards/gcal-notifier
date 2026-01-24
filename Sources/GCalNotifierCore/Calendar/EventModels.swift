@@ -140,6 +140,16 @@ public extension CalendarEvent {
 // MARK: - CalendarEvent Computed Properties
 
 public extension CalendarEvent {
+    /// Unique identifier scoped to the calendar (prevents collisions across calendars).
+    var qualifiedId: String {
+        "\(self.calendarId)::\(self.id)"
+    }
+
+    /// Alert identifier for a given stage, scoped to the calendar.
+    func alertIdentifier(for stage: AlertStage) -> String {
+        "\(self.qualifiedId)-\(stage.rawValue)"
+    }
+
     /// Whether this event should trigger an alert.
     /// Events with meeting links should alert (except all-day events).
     var shouldAlert: Bool {
@@ -243,7 +253,7 @@ public extension BackToBackState {
         // Find the next meeting that would be back-to-back
         let nextBackToBack = events
             .filter { event in
-                event.startTime > now && event.hasVideoLink && event.id != current.id
+                event.startTime > now && event.hasVideoLink && event.qualifiedId != current.qualifiedId
             }
             .sorted { $0.startTime < $1.startTime }
             .first { current.isBackToBack(with: $0) }

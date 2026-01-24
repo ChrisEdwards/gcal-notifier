@@ -6,24 +6,41 @@ import OSLog
 
 /// Available built-in sounds bundled with the app.
 public enum BuiltInSound: String, CaseIterable, Sendable {
-    case gentleChime = "gentle-chime"
-    case urgentTone = "urgent-tone"
-    case bell
-    case subtleChime = "subtle-chime"
+    case glass
+    case hero
+    case ping
+    case pop
+    case funk
+    case blow
+    case bottle
+    case purr
+    case submarine
+    case tink
 
     /// Human-readable display name for preferences UI.
     public var displayName: String {
         switch self {
-        case .gentleChime: "Gentle Chime"
-        case .urgentTone: "Urgent Tone"
-        case .bell: "Bell"
-        case .subtleChime: "Subtle Chime"
+        case .glass: "Glass"
+        case .hero: "Hero"
+        case .ping: "Ping"
+        case .pop: "Pop"
+        case .funk: "Funk"
+        case .blow: "Blow"
+        case .bottle: "Bottle"
+        case .purr: "Purr"
+        case .submarine: "Submarine"
+        case .tink: "Tink"
         }
     }
 
     /// Whether this sound is suitable for back-to-back (downgraded) alerts.
     public var isSubtle: Bool {
-        self == .subtleChime
+        self == .pop || self == .tink
+    }
+
+    /// System sound file name
+    var systemSoundName: String {
+        self.displayName
     }
 }
 
@@ -143,7 +160,7 @@ public final class SoundPlayer {
     /// Uses the subtle chime sound which is less intrusive than normal alerts,
     /// appropriate when the user is already in a meeting.
     public func playSubtleAlertSound() {
-        self.play(.subtleChime)
+        self.play(.tink)
     }
 
     /// Play a sound appropriate for a downgraded alert.
@@ -209,11 +226,17 @@ public final class SoundPlayer {
     // MARK: - Private Helpers
 
     private func bundleURL(for sound: BuiltInSound) -> URL? {
-        Bundle.main.url(
+        // First try app bundle
+        if let url = Bundle.main.url(
             forResource: sound.rawValue,
             withExtension: "mp3",
             subdirectory: "Sounds"
-        )
+        ) {
+            return url
+        }
+
+        // Fall back to system sounds
+        return URL(fileURLWithPath: "/System/Library/Sounds/\(sound.systemSoundName).aiff")
     }
 
     private func playFromURL(_ url: URL) {

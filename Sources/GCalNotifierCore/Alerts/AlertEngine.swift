@@ -191,10 +191,12 @@ public actor AlertEngine {
         let now = self.dateProvider()
         let stage1Minutes = settings.alertStage1Minutes
         let stage2Minutes = settings.alertStage2Minutes
+        let filter = EventFilter(settings: settings)
 
         for event in events {
-            guard event.shouldAlert else { continue }
-            guard !self.acknowledgedEventIds.contains(event.id) else { continue }
+            guard filter.shouldAlert(for: event) else { continue }
+            let eventKey = event.qualifiedId
+            guard !self.acknowledgedEventIds.contains(eventKey) else { continue }
 
             // Schedule Stage 1 if enabled and not in the past
             if stage1Minutes > 0 {
@@ -280,7 +282,7 @@ public actor AlertEngine {
     /// Reconciles alerts with a new set of events.
     /// Removes alerts for deleted events and schedules new ones.
     public func reconcile(newEvents: [CalendarEvent], settings: SettingsStore) async {
-        let newEventIds = Set(newEvents.map(\.id))
+        let newEventIds = Set(newEvents.map(\.qualifiedId))
 
         // Cancel alerts for events that no longer exist
         let orphanedEventIds = Set(alerts.values.map(\.eventId)).subtracting(newEventIds)
@@ -379,8 +381,8 @@ public actor AlertEngine {
         fireTime: Date
     ) -> ScheduledAlert {
         ScheduledAlert(
-            id: "\(event.id)-\(stage.rawValue)",
-            eventId: event.id,
+            id: event.alertIdentifier(for: stage),
+            eventId: event.qualifiedId,
             stage: stage,
             scheduledFireTime: fireTime,
             snoozeCount: 0,

@@ -77,7 +77,7 @@ public struct ConflictDetector: Sendable {
     ) -> [CalendarEvent] {
         events.filter { other in
             // Don't compare event to itself
-            guard other.id != event.id else { return false }
+            guard other.qualifiedId != event.qualifiedId else { return false }
             return self.overlaps(event, other)
         }
     }

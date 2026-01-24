@@ -306,7 +306,7 @@ struct MenuEventFilteringTests {
     func sortsByStartTime() {
         // Use morning time to avoid midnight boundary issues
         let calendar = Calendar.current
-        let now = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: Date())!
+        guard let now = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) else { return }
         guard let link = makeTestLink() else { return }
         let laterEvent = makeTestEvent(
             id: "later",

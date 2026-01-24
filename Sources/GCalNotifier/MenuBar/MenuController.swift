@@ -357,8 +357,9 @@ extension MenuController {
         if let callback = onOpenInCalendar {
             callback(event)
         } else {
-            let urlString = "https://calendar.google.com/calendar/event?eid=\(event.id)"
-            if let url = URL(string: urlString) {
+            var components = URLComponents(string: "https://calendar.google.com/calendar/event")
+            components?.queryItems = [URLQueryItem(name: "eid", value: event.id)]
+            if let url = components?.url {
                 NSWorkspace.shared.open(url)
             }
         }

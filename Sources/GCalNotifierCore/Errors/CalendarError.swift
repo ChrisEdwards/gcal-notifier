@@ -228,7 +228,7 @@ public extension CalendarError {
         case 401:
             .authenticationRequired
         case 403:
-            .rateLimited(retryAfter: nil)
+            .invalidRequest(message ?? "Forbidden")
         case 404:
             calendarId.map { .calendarNotFound(calendarId: $0) }
                 ?? .invalidRequest(message ?? "Resource not found")

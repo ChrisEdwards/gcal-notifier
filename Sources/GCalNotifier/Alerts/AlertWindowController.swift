@@ -348,7 +348,7 @@ extension AlertWindowController {
             return
         }
 
-        let alertId = "\(event.id)-\(stage.rawValue)"
+        let alertId = event.alertIdentifier(for: stage)
 
         Task {
             do {
@@ -365,11 +365,14 @@ extension AlertWindowController {
         guard let event = currentEvent else { return }
 
         // Google Calendar event URL
-        let eventURL = URL(string: "https://calendar.google.com/calendar/event?eid=\(event.id)")
-        if let url = eventURL {
-            NSWorkspace.shared.open(url)
-            Logger.alerts.info("Opening event in calendar: \(event.id)")
+        var components = URLComponents(string: "https://calendar.google.com/calendar/event")
+        components?.queryItems = [URLQueryItem(name: "eid", value: event.id)]
+        guard let url = components?.url else {
+            Logger.alerts.error("Failed to build calendar URL for event: \(event.id)")
+            return
         }
+        NSWorkspace.shared.open(url)
+        Logger.alerts.info("Opening event in calendar: \(event.id)")
         // Don't close - user might want to come back
     }
 
@@ -382,7 +385,7 @@ extension AlertWindowController {
         }
 
         Task {
-            await engine.acknowledgeAlert(eventId: event.id)
+            await engine.acknowledgeAlert(eventId: event.qualifiedId)
             Logger.alerts.info("Dismissed and acknowledged alert for: \(event.id)")
         }
         close()
@@ -396,7 +399,7 @@ extension AlertWindowController: NSWindowDelegate {
         // Acknowledge when window is closed via close button
         if let event = currentEvent, let engine = alertEngine {
             Task {
-                await engine.acknowledgeAlert(eventId: event.id)
+                await engine.acknowledgeAlert(eventId: event.qualifiedId)
             }
         }
     }

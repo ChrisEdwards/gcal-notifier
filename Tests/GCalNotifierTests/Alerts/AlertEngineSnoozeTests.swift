@@ -25,17 +25,18 @@ struct AlertEngineSnoozeTests {
         )
 
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage2)
         let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 5)
 
         await engine.scheduleAlerts(for: [event], settings: settings)
 
         // Snooze for 1 minute
-        try await engine.snooze(alertId: "event-1-stage2", duration: 60)
+        try await engine.snooze(alertId: alertId, duration: 60)
 
         let scheduled = await scheduler.scheduledAlerts
         // Original + snoozed = 2 calls, but we check the latest
         let lastScheduled = scheduled.last
-        #expect(lastScheduled?.alertId == "event-1-stage2")
+        #expect(lastScheduled?.alertId == alertId)
         #expect(lastScheduled?.fireDate == baseTime.addingTimeInterval(60))
     }
 
@@ -57,15 +58,16 @@ struct AlertEngineSnoozeTests {
         )
 
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage2)
         let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 5)
 
         await engine.scheduleAlerts(for: [event], settings: settings)
 
         // Snooze once
-        try await engine.snooze(alertId: "event-1-stage2", duration: 60)
+        try await engine.snooze(alertId: alertId, duration: 60)
 
         let alerts = await engine.scheduledAlerts
-        let snoozedAlert = alerts.first { $0.id == "event-1-stage2" }
+        let snoozedAlert = alerts.first { $0.id == alertId }
         #expect(snoozedAlert?.snoozeCount == 1)
     }
 
@@ -88,16 +90,17 @@ struct AlertEngineSnoozeTests {
         )
 
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage2)
         let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 5)
 
         await engine.scheduleAlerts(for: [event], settings: settings)
 
         // Snooze twice
-        try await engine.snooze(alertId: "event-1-stage2", duration: 60)
-        try await engine.snooze(alertId: "event-1-stage2", duration: 60)
+        try await engine.snooze(alertId: alertId, duration: 60)
+        try await engine.snooze(alertId: alertId, duration: 60)
 
         let alerts = await engine.scheduledAlerts
-        let snoozedAlert = alerts.first { $0.id == "event-1-stage2" }
+        let snoozedAlert = alerts.first { $0.id == alertId }
         #expect(snoozedAlert?.snoozeCount == 2)
         #expect(snoozedAlert?.originalFireTime == originalFireTime)
     }
@@ -143,6 +146,7 @@ struct AlertEngineSnoozeTests {
         )
 
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage2)
         let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 5)
 
         await engine.scheduleAlerts(for: [event], settings: settings)
@@ -151,7 +155,7 @@ struct AlertEngineSnoozeTests {
         currentTime = eventStart.addingTimeInterval(60)
 
         await #expect(throws: AlertError.meetingAlreadyStarted) {
-            try await engine.snooze(alertId: "event-1-stage2", duration: 60)
+            try await engine.snooze(alertId: alertId, duration: 60)
         }
     }
 
@@ -173,13 +177,14 @@ struct AlertEngineSnoozeTests {
         )
 
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage2)
         let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 1)
 
         await engine.scheduleAlerts(for: [event], settings: settings)
 
         // Try to snooze for 3 minutes (would exceed meeting start)
         await #expect(throws: AlertError.snoozePastMeetingStart) {
-            try await engine.snooze(alertId: "event-1-stage2", duration: 180)
+            try await engine.snooze(alertId: alertId, duration: 180)
         }
     }
 
@@ -201,14 +206,15 @@ struct AlertEngineSnoozeTests {
         )
 
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage2)
         let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 5)
 
         await engine.scheduleAlerts(for: [event], settings: settings)
 
-        try await engine.snooze(alertId: "event-1-stage2", duration: 60)
+        try await engine.snooze(alertId: alertId, duration: 60)
 
         let cancelled = await scheduler.cancelledAlertIds
-        #expect(cancelled.contains("event-1-stage2"))
+        #expect(cancelled.contains(alertId))
     }
 
     @Test("Snooze persists the snoozed alert")
@@ -229,14 +235,15 @@ struct AlertEngineSnoozeTests {
         )
 
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage2)
         let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 5)
 
         await engine.scheduleAlerts(for: [event], settings: settings)
 
-        try await engine.snooze(alertId: "event-1-stage2", duration: 60)
+        try await engine.snooze(alertId: alertId, duration: 60)
 
         let persisted = try await store.load()
-        let snoozedAlert = persisted.first { $0.id == "event-1-stage2" }
+        let snoozedAlert = persisted.first { $0.id == alertId }
         #expect(snoozedAlert?.snoozeCount == 1)
         #expect(snoozedAlert?.scheduledFireTime == baseTime.addingTimeInterval(60))
     }
