@@ -17,6 +17,7 @@ public final class SettingsStore: @unchecked Sendable {
         static let forceAlertKeywords = "forceAlertKeywords"
         static let launchAtLogin = "launchAtLogin"
         static let suppressDuringScreenShare = "suppressDuringScreenShare"
+        static let shortcutsEnabled = "shortcutsEnabled"
     }
 
     // MARK: - Properties
@@ -84,6 +85,14 @@ public final class SettingsStore: @unchecked Sendable {
     public var suppressDuringScreenShare: Bool {
         get { self.defaults.object(forKey: Keys.suppressDuringScreenShare) as? Bool ?? true }
         set { self.defaults.set(newValue, forKey: Keys.suppressDuringScreenShare) }
+    }
+
+    // MARK: - Keyboard Shortcuts
+
+    /// Whether global keyboard shortcuts are enabled.
+    public var shortcutsEnabled: Bool {
+        get { self.defaults.object(forKey: Keys.shortcutsEnabled) as? Bool ?? true }
+        set { self.defaults.set(newValue, forKey: Keys.shortcutsEnabled) }
     }
 
     // MARK: - Initialization

@@ -23,6 +23,9 @@ struct PreferencesView: View {
             FilteringTab(settings: self.settings)
                 .tabItem { Label("Filtering", systemImage: "line.3.horizontal.decrease.circle") }
 
+            ShortcutsTab(settings: self.settings)
+                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+
             AccountTab()
                 .tabItem { Label("Account", systemImage: "person.circle") }
         }

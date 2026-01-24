@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_: Notification) {
         self.terminateIfAlreadyRunning()
 
+        // Set up global keyboard shortcuts
+        ShortcutManager.shared.setup()
+
         // Set up first launch handler delegate
         self.firstLaunchHandler.setDelegate(self)
 
@@ -32,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await self.firstLaunchHandler.handleFirstLaunchIfNeeded()
         }
+    }
+
+    func applicationWillTerminate(_: Notification) {
+        // Clean up keyboard shortcuts
+        ShortcutManager.shared.teardown()
     }
 
     private func terminateIfAlreadyRunning() {

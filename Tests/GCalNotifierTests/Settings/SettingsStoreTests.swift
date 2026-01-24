@@ -103,6 +103,14 @@ struct SettingsStoreDefaultValueTests {
 
         #expect(store.suppressDuringScreenShare == true)
     }
+
+    @Test("Default shortcutsEnabled is true")
+    func shortcutsEnabled_defaultsToTrue() {
+        let defaults = makeTestDefaults()
+        let store = SettingsStore(defaults: defaults)
+
+        #expect(store.shortcutsEnabled == true)
+    }
 }
 
 // MARK: - Persistence Tests
