@@ -81,4 +81,6 @@ fi
 codesign --force --sign - "$APP_BUNDLE" 2>/dev/null || true
 
 # Launch the app bundle
+echo "Launching $APP_NAME..."
 open "$APP_BUNDLE"
+echo "App launched. Look for 📅 in your menu bar."
