@@ -260,6 +260,59 @@ public final class StatusItemController: NSObject {
     public func stop() {
         self.updateTimer?.invalidate()
         self.updateTimer = nil
+        self.pulseTimer?.invalidate()
+        self.pulseTimer = nil
+    }
+
+    // MARK: - Pulse Animation for Suppressed Alerts
+
+    private var pulseCount = 0
+    private let maxPulseCount = 6 // 3 on, 3 off cycles
+    private var pulseTimer: Timer?
+
+    /// Pulses the menu bar icon to indicate a suppressed alert.
+    ///
+    /// When an alert is suppressed (due to screen sharing, DND, etc.),
+    /// we pulse the menu bar icon to draw attention without showing a modal.
+    public func pulseIcon() {
+        self.pulseCount = 0
+        self.pulseIconAnimation()
+    }
+
+    private func pulseIconAnimation() {
+        self.pulseTimer?.invalidate()
+
+        self.pulseTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+
+                self.pulseCount += 1
+
+                if self.pulseCount > self.maxPulseCount {
+                    self.pulseTimer?.invalidate()
+                    self.pulseTimer = nil
+                    self.updateDisplay() // Restore normal display
+                    return
+                }
+
+                // Alternate between alert icon and current state
+                if self.pulseCount.isMultiple(of: 2) {
+                    self.updateDisplay()
+                } else {
+                    self.updateStatusItemIfNeeded("🔔")
+                }
+            }
+        }
+    }
+
+    /// Shows a badge indicator on the menu bar for a suppressed alert.
+    ///
+    /// Uses a different icon to indicate there's a pending alert that was suppressed.
+    public func showSuppressedBadge() {
+        let countdown = StatusItemLogic.formatCountdown(
+            secondsUntil: self.nextMeeting?.startTime.timeIntervalSinceNow ?? 0
+        )
+        self.updateStatusItemIfNeeded("📵 \(countdown)")
     }
 }
 

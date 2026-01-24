@@ -145,6 +145,9 @@ public actor AlertEngine {
     /// Provider for back-to-back context. Set this to enable back-to-back detection during alerts.
     private var backToBackContextProvider: (@Sendable (ScheduledAlert) async -> BackToBackAlertContext)?
 
+    /// Provider for presentation mode suppression. Set this to enable screen share/DND detection during alerts.
+    private var presentationModeProvider: (@Sendable () async -> AlertDowngradeReason?)?
+
     // MARK: - Public Access
 
     /// Currently scheduled alerts.
@@ -307,42 +310,29 @@ public actor AlertEngine {
         }
     }
 
-    // MARK: - Back-to-Back Configuration
+    // MARK: - Alert Suppression Providers
 
-    /// Sets the back-to-back context provider for smart alert handling.
-    ///
-    /// When set, the AlertEngine will check for back-to-back situations before firing alerts.
-    /// If the user is in a meeting and the upcoming meeting is back-to-back, stage 1 alerts
-    /// will be downgraded to notification banners instead of modal windows.
-    ///
-    /// - Parameter provider: A closure that returns the back-to-back context for a given alert.
+    /// Sets back-to-back context provider. Stage 1 alerts are downgraded to banners when user is in a meeting.
     public func setBackToBackContextProvider(
         _ provider: @escaping @Sendable (ScheduledAlert) async -> BackToBackAlertContext
-    ) {
-        self.backToBackContextProvider = provider
-    }
+    ) { self.backToBackContextProvider = provider }
 
     /// Clears the back-to-back context provider.
-    public func clearBackToBackContextProvider() {
-        self.backToBackContextProvider = nil
-    }
+    public func clearBackToBackContextProvider() { self.backToBackContextProvider = nil }
+
+    /// Sets presentation mode provider for suppression during screen share/DND.
+    public func setPresentationModeProvider(
+        _ provider: @escaping @Sendable () async -> AlertDowngradeReason?
+    ) { self.presentationModeProvider = provider }
+
+    /// Clears the presentation mode provider.
+    public func clearPresentationModeProvider() { self.presentationModeProvider = nil }
 
     // MARK: - Missed Alert Handling
 
-    /// Grace period for "meeting just started" alerts (5 minutes).
-    private static let missedAlertGracePeriod: TimeInterval = 5 * 60
+    private static let missedAlertGracePeriod: TimeInterval = 5 * 60 // 5 minutes
 
-    /// Checks for alerts that should have fired during sleep.
-    ///
-    /// Returns missed alerts categorized by how to handle them:
-    /// - `.fireNow`: Meeting hasn't started - fire alert immediately
-    /// - `.meetingJustStarted`: Meeting started <5 min ago - show "Meeting started!" alert
-    /// - `.tooOld`: Meeting started >5 min ago - just remove the alert
-    ///
-    /// Call this after system wake to recover from missed alerts.
-    /// Alerts are delivered through the AlertDelivery delegate and removed from the store.
-    ///
-    /// - Returns: Array of missed alert results for processing by the caller.
+    /// Checks for alerts that missed during sleep. Returns categorized results for handling.
     public func checkForMissedAlerts() async -> [MissedAlertResult] {
         let now = self.dateProvider()
         var results: [MissedAlertResult] = []
@@ -427,12 +417,23 @@ public actor AlertEngine {
         guard let alert = alerts[alertId] else { return }
         self.alerts.removeValue(forKey: alertId)
 
-        // Check for back-to-back context to potentially downgrade the alert
-        let shouldDowngrade = await self.shouldDowngradeAlert(alert)
+        // Check suppression in order of priority:
+        // 1. Presentation mode (screen share, DND) - highest priority
+        // 2. Back-to-back meeting context
 
-        if shouldDowngrade {
+        // Check for presentation mode suppression first
+        if let reason = await self.checkPresentationModeSuppression() {
+            await self.delivery.deliverDowngraded(alert: alert, reason: reason)
+            await self.persistAlerts()
+            return
+        }
+
+        // Check for back-to-back context to potentially downgrade the alert
+        let downgradeReason = await self.shouldDowngradeAlert(alert)
+
+        if let reason = downgradeReason {
             // Downgrade to notification banner instead of modal
-            await self.delivery.deliverDowngraded(alert: alert, reason: .backToBackMeeting)
+            await self.delivery.deliverDowngraded(alert: alert, reason: reason)
         } else {
             // Normal alert delivery (modal)
             await self.delivery.deliver(alert: alert)
@@ -441,24 +442,28 @@ public actor AlertEngine {
         await self.persistAlerts()
     }
 
-    /// Determines whether an alert should be downgraded based on back-to-back context.
-    ///
-    /// Stage 1 alerts should be downgraded when:
-    /// - User is currently in a meeting
-    /// - The alert is for a back-to-back meeting
-    ///
-    /// Stage 2 alerts are never downgraded (user needs urgent notification).
-    private func shouldDowngradeAlert(_ alert: ScheduledAlert) async -> Bool {
+    /// Checks if presentation mode suppression should apply (screen share, mirroring, DND).
+    private func checkPresentationModeSuppression() async -> AlertDowngradeReason? {
+        guard let provider = presentationModeProvider else { return nil }
+        return await provider()
+    }
+
+    /// Checks for back-to-back downgrade (only for stage 1 alerts).
+    private func shouldDowngradeAlert(_ alert: ScheduledAlert) async -> AlertDowngradeReason? {
         // Only downgrade stage 1 alerts
-        guard alert.stage == .stage1 else { return false }
+        guard alert.stage == .stage1 else { return nil }
 
         // Check if we have a back-to-back context provider
-        guard let provider = backToBackContextProvider else { return false }
+        guard let provider = backToBackContextProvider else { return nil }
 
         let context = await provider(alert)
 
         // Downgrade if user is in a meeting and this is a back-to-back situation
-        return context.isInMeeting && context.isBackToBackSituation
+        if context.isInMeeting, context.isBackToBackSituation {
+            return .backToBackMeeting
+        }
+
+        return nil
     }
 
     private func persistAlerts() async {
