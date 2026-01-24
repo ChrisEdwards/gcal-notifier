@@ -9,6 +9,10 @@ actor MockHTTPClient: HTTPClient {
     var requestsReceived: [URLRequest] = []
     var errorToThrow: Error?
 
+    func setErrorToThrow(_ error: Error?) {
+        self.errorToThrow = error
+    }
+
     func queueResponse(data: Data, statusCode: Int) {
         guard let url = URL(string: "https://example.com"),
               let response = HTTPURLResponse(

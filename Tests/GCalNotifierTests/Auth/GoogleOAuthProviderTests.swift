@@ -53,26 +53,9 @@ private func makeTokenResponseJSON(
     refreshToken: String? = "test-refresh-token",
     expiresIn: Int = 3600
 ) -> Data {
-    var json = """
-    {
-        "access_token": "\(accessToken)",
-        "expires_in": \(expiresIn),
-        "token_type": "Bearer"
-    }
-    """
-
-    if let refreshToken {
-        json = """
-        {
-            "access_token": "\(accessToken)",
-            "refresh_token": "\(refreshToken)",
-            "expires_in": \(expiresIn),
-            "token_type": "Bearer"
-        }
-        """
-    }
-
-    return Data(json.utf8)
+    var json = "{\"access_token\":\"\(accessToken)\",\"expires_in\":\(expiresIn),\"token_type\":\"Bearer\""
+    if let refreshToken { json += ",\"refresh_token\":\"\(refreshToken)\"" }
+    return Data((json + "}").utf8)
 }
 
 // MARK: - Tests
@@ -418,5 +401,100 @@ struct GoogleOAuthProviderTests {
 
         let isAuthenticated = await ctx.provider.isAuthenticated
         #expect(isAuthenticated == true)
+    }
+}
+
+// MARK: - Error Recovery Tests
+
+@Suite("Error Recovery Tests", .serialized)
+struct ErrorRecoveryTests {
+    @Test("GetAccessToken with server error keeps expired state")
+    func getAccessTokenServerErrorKeepsExpiredState() async throws {
+        let ctx = await makeTestContext()
+        defer { Task { await cleanup(ctx.keychainManager) } }
+
+        let credentials = OAuthClientCredentials(clientId: "test-id", clientSecret: "test-secret")
+        try await ctx.keychainManager.saveClientCredentials(credentials)
+
+        let tokens = OAuthTokens(
+            accessToken: "old-access-token",
+            refreshToken: "my-refresh-token",
+            expiresAt: Date().addingTimeInterval(60)
+        )
+        try await ctx.keychainManager.saveTokens(tokens)
+
+        try await ctx.provider.loadStoredCredentials()
+
+        await ctx.httpClient.queueResponse(data: Data("Internal Server Error".utf8), statusCode: 500)
+
+        do {
+            _ = try await ctx.provider.getAccessToken()
+            Issue.record("Expected serverError")
+        } catch let error as OAuthError {
+            if case .serverError(500, _) = error {
+                // Expected
+            } else {
+                Issue.record("Expected serverError(500), got \(error)")
+            }
+        }
+
+        let state = await ctx.provider.state
+        #expect(state == .expired)
+    }
+
+    @Test("GetAccessToken with network error keeps expired state")
+    func getAccessTokenNetworkErrorKeepsExpiredState() async throws {
+        let ctx = await makeTestContext()
+        defer { Task { await cleanup(ctx.keychainManager) } }
+
+        let credentials = OAuthClientCredentials(clientId: "test-id", clientSecret: "test-secret")
+        try await ctx.keychainManager.saveClientCredentials(credentials)
+
+        let tokens = OAuthTokens(
+            accessToken: "old-access-token",
+            refreshToken: "my-refresh-token",
+            expiresAt: Date().addingTimeInterval(60)
+        )
+        try await ctx.keychainManager.saveTokens(tokens)
+
+        try await ctx.provider.loadStoredCredentials()
+
+        await ctx.httpClient.setErrorToThrow(URLError(.notConnectedToInternet))
+
+        do {
+            _ = try await ctx.provider.getAccessToken()
+            Issue.record("Expected network error")
+        } catch let error as OAuthError {
+            if case .networkError = error {
+                // Expected
+            } else {
+                Issue.record("Expected networkError, got \(error)")
+            }
+        }
+
+        let state = await ctx.provider.state
+        #expect(state == .expired)
+    }
+
+    @Test("ValidateCredentials returns expected results")
+    func validateCredentialsReturnsExpectedResults() async {
+        let ctx = await makeTestContext()
+        defer { Task { await cleanup(ctx.keychainManager) } }
+
+        let valid = await ctx.provider.validateCredentials(
+            clientId: "123.apps.googleusercontent.com",
+            clientSecret: "GOCSPX-abc"
+        )
+        #expect(valid == .valid)
+        let empty = await ctx.provider.validateCredentials(
+            clientId: "",
+            clientSecret: "x"
+        )
+        #expect(empty == .invalid("Credentials cannot be empty"))
+        let warn = await ctx.provider.validateCredentials(
+            clientId: "x",
+            clientSecret: "x"
+        )
+        #expect(warn.isAcceptable == true)
     }
 }

@@ -292,6 +292,8 @@ struct OAuthSetupView: View {
             self.errorMessage = "Please sign in first."
         case let .keychainError(keychainError):
             self.errorMessage = "Keychain error: \(keychainError)"
+        case let .serverError(code, message):
+            self.errorMessage = "Server error (\(code)): \(message). Please try again."
         }
     }
 }

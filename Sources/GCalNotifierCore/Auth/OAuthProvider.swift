@@ -1,3 +1,5 @@
+import Foundation
+
 /// A protocol defining OAuth authentication provider capabilities.
 ///
 /// `OAuthProvider` abstracts the authentication lifecycle for OAuth 2.0 providers,
@@ -95,7 +97,7 @@ public extension OAuthProvider {
 // MARK: - OAuthError
 
 /// Errors that can occur during OAuth operations.
-public enum OAuthError: Error, Equatable, Sendable {
+public enum OAuthError: Error, Equatable, Sendable, LocalizedError {
     /// OAuth credentials have not been configured.
     case notConfigured
     /// The provided credentials are invalid (empty or malformed).
@@ -112,4 +114,71 @@ public enum OAuthError: Error, Equatable, Sendable {
     case networkError(String)
     /// Keychain operation failed.
     case keychainError(KeychainError)
+    /// Server returned an error response.
+    case serverError(Int, String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .notConfigured:
+            "OAuth credentials have not been configured."
+        case .invalidCredentials:
+            "Invalid OAuth credentials. Please check your Client ID and Secret."
+        case .notAuthenticated:
+            "Not authenticated. Please sign in."
+        case let .authenticationFailed(message):
+            "Authentication failed: \(message)"
+        case .tokenRefreshFailed:
+            "Session expired. Please sign in again."
+        case .userCancelled:
+            "Sign-in was cancelled."
+        case let .networkError(message):
+            "Network error: \(message). Check your internet connection."
+        case let .keychainError(error):
+            "Keychain error: \(error)"
+        case let .serverError(code, message):
+            "Server error (\(code)): \(message)"
+        }
+    }
+
+    /// Whether this error is transient and may succeed on retry.
+    public var isTransient: Bool {
+        switch self {
+        case .networkError, .serverError(500..., _):
+            true
+        default:
+            false
+        }
+    }
+
+    /// Whether this error requires user action to resolve.
+    public var requiresUserAction: Bool {
+        switch self {
+        case .notConfigured, .invalidCredentials, .notAuthenticated, .tokenRefreshFailed, .userCancelled:
+            true
+        case .authenticationFailed, .networkError, .keychainError, .serverError:
+            false
+        }
+    }
+}
+
+// MARK: - ValidationResult
+
+/// Result of validating OAuth credentials format.
+public enum ValidationResult: Equatable, Sendable {
+    /// Credentials appear valid.
+    case valid
+    /// Credentials are invalid with a reason.
+    case invalid(String)
+    /// Credentials may work but have a potential issue.
+    case warning(String)
+
+    /// Whether the credentials should be accepted (valid or warning).
+    public var isAcceptable: Bool {
+        switch self {
+        case .valid, .warning:
+            true
+        case .invalid:
+            false
+        }
+    }
 }

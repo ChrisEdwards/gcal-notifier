@@ -106,19 +106,13 @@ public actor GoogleOAuthProvider: OAuthProvider {
     }
 
     public func getAccessToken() async throws -> String {
-        guard self.state.canMakeApiCalls else {
-            throw OAuthError.notAuthenticated
-        }
-
-        if self.tokens == nil {
-            self.tokens = try await self.keychainManager.loadTokens()
-        }
+        guard self.state.canMakeApiCalls else { throw OAuthError.notAuthenticated }
+        if self.tokens == nil { self.tokens = try await self.keychainManager.loadTokens() }
 
         guard var currentTokens = tokens else {
             self.state = .invalid
             throw OAuthError.notAuthenticated
         }
-
         if currentTokens.expiresIn < Self.refreshThresholdSeconds {
             Logger.auth.debug("Token expires in \(Int(currentTokens.expiresIn))s, refreshing proactively")
             do {
@@ -126,9 +120,10 @@ public actor GoogleOAuthProvider: OAuthProvider {
                 self.tokens = currentTokens
                 self.state = .authenticated
             } catch {
-                Logger.auth.error("Token refresh failed: \(error.localizedDescription)")
-                self.state = .invalid
-                throw OAuthError.tokenRefreshFailed(error.localizedDescription)
+                let oauthError = Self.classifyRefreshError(error)
+                Logger.auth.error("Token refresh failed: \(oauthError.localizedDescription)")
+                self.state = oauthError.isTransient ? .expired : .invalid
+                throw oauthError
             }
         }
 
@@ -303,15 +298,25 @@ public actor GoogleOAuthProvider: OAuthProvider {
         let (data, response) = try await httpClient.execute(request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            let errorMsg = isRefresh ? "Invalid response type" : "Invalid response type"
-            throw isRefresh ? OAuthError.tokenRefreshFailed(errorMsg) : OAuthError.authenticationFailed(errorMsg)
+            let msg = "Invalid response"
+            throw isRefresh ? OAuthError.tokenRefreshFailed(msg) : OAuthError.authenticationFailed(msg)
         }
 
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            let errorMsg = "HTTP \(httpResponse.statusCode): \(errorBody)"
-            Logger.auth.error("Token request failed: \(errorMsg)")
-            throw isRefresh ? OAuthError.tokenRefreshFailed(errorMsg) : OAuthError.authenticationFailed(errorMsg)
+            Logger.auth.error("Token request failed: HTTP \(httpResponse.statusCode): \(errorBody)")
+            switch httpResponse.statusCode {
+            case 400, 401:
+                let msg = "Invalid credentials or tokens"
+                throw isRefresh ? OAuthError.tokenRefreshFailed(msg) : OAuthError.authenticationFailed(msg)
+            case 500...:
+                throw OAuthError.serverError(httpResponse.statusCode, errorBody)
+            default:
+                let errorMsg = "HTTP \(httpResponse.statusCode): \(errorBody)"
+                throw isRefresh
+                    ? OAuthError.tokenRefreshFailed(errorMsg)
+                    : OAuthError.authenticationFailed(errorMsg)
+            }
         }
 
         do {
@@ -384,3 +389,32 @@ public protocol BrowserOpener: Sendable {
         }
     }
 #endif
+
+// MARK: - Credential Validation Extension
+
+public extension GoogleOAuthProvider {
+    /// Validates credential format before storing.
+    func validateCredentials(clientId: String, clientSecret: String) -> ValidationResult {
+        if clientId.isEmpty || clientSecret.isEmpty {
+            return .invalid("Credentials cannot be empty")
+        }
+        if !clientId.contains(".apps.googleusercontent.com") {
+            return .warning("Client ID doesn't look like a Google OAuth client ID")
+        }
+        if clientSecret.count < 10 {
+            return .warning("Client secret seems unusually short")
+        }
+        return .valid
+    }
+}
+
+// MARK: - Error Classification
+
+extension GoogleOAuthProvider {
+    /// Classifies a refresh error into an appropriate OAuthError.
+    static func classifyRefreshError(_ error: Error) -> OAuthError {
+        if let oauthError = error as? OAuthError { return oauthError }
+        if error is URLError { return .networkError(error.localizedDescription) }
+        return .tokenRefreshFailed(error.localizedDescription)
+    }
+}
