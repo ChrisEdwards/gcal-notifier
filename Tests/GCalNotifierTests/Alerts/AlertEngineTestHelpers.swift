@@ -42,13 +42,19 @@ actor MockAlertScheduler: AlertScheduler {
 /// Mock delivery that tracks delivered alerts.
 actor MockAlertDelivery: AlertDelivery {
     private(set) var deliveredAlerts: [ScheduledAlert] = []
+    private(set) var downgradedAlerts: [(alert: ScheduledAlert, reason: AlertDowngradeReason)] = []
 
     func deliver(alert: ScheduledAlert) async {
         self.deliveredAlerts.append(alert)
     }
 
+    func deliverDowngraded(alert: ScheduledAlert, reason: AlertDowngradeReason) async {
+        self.downgradedAlerts.append((alert, reason))
+    }
+
     func reset() {
         self.deliveredAlerts = []
+        self.downgradedAlerts = []
     }
 }
 

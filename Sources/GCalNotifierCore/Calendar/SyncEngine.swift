@@ -235,6 +235,53 @@ public actor SyncEngine {
         }
     }
 
+    // MARK: - Back-to-Back Detection
+
+    /// Detects the current back-to-back meeting state.
+    ///
+    /// - Parameter now: Current time (defaults to now).
+    /// - Returns: The detected back-to-back state, or `.none` if not in a back-to-back situation.
+    public func detectBackToBackState(now: Date = Date()) async -> BackToBackState {
+        do {
+            let events = try await eventCache.load()
+            return BackToBackState.detect(from: events, now: now)
+        } catch {
+            self.logger.error("Failed to load events for back-to-back detection: \(error.localizedDescription)")
+            return .none
+        }
+    }
+
+    /// Finds the current meeting the user is in (if any).
+    ///
+    /// - Parameter now: Current time (defaults to now).
+    /// - Returns: The current meeting event, or `nil` if not in a meeting.
+    public func currentMeeting(now: Date = Date()) async -> CalendarEvent? {
+        do {
+            let events = try await eventCache.load()
+            return events.first { event in
+                event.isInProgress(at: now) && event.hasVideoLink
+            }
+        } catch {
+            return nil
+        }
+    }
+
+    /// Finds the next meeting that is back-to-back with the current meeting.
+    ///
+    /// - Parameter now: Current time (defaults to now).
+    /// - Returns: The next back-to-back meeting, or `nil` if none.
+    public func nextBackToBackMeeting(now: Date = Date()) async -> CalendarEvent? {
+        await self.detectBackToBackState(now: now).nextBackToBackMeeting
+    }
+
+    /// Checks whether the user is currently in a meeting.
+    ///
+    /// - Parameter now: Current time (defaults to now).
+    /// - Returns: `true` if the user is in a meeting with a video link.
+    public func isUserInMeeting(now: Date = Date()) async -> Bool {
+        await self.currentMeeting(now: now) != nil
+    }
+
     // MARK: - Private Methods
 
     private func performSync(calendarId: String) async throws -> SyncResult {

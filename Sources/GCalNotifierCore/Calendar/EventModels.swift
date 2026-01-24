@@ -122,6 +122,21 @@ public struct CalendarEvent: Codable, Identifiable, Sendable, Equatable {
     }
 }
 
+// MARK: - Back-to-Back Detection
+
+public extension CalendarEvent {
+    /// Maximum gap in seconds for events to be considered back-to-back (5 minutes).
+    static let backToBackThreshold: TimeInterval = 5 * 60
+
+    /// Whether this meeting is back-to-back with another (next meeting starts within 5 minutes of this ending).
+    /// - Parameter other: The next event to check against.
+    /// - Returns: `true` if the other event starts within 5 minutes after this one ends.
+    func isBackToBack(with other: CalendarEvent) -> Bool {
+        let gap = other.startTime.timeIntervalSince(self.endTime)
+        return gap >= 0 && gap <= Self.backToBackThreshold
+    }
+}
+
 // MARK: - CalendarEvent Computed Properties
 
 public extension CalendarEvent {
@@ -135,6 +150,18 @@ public extension CalendarEvent {
     /// The primary meeting URL, if any (first meeting link).
     var primaryMeetingURL: URL? {
         self.meetingLinks.first?.url
+    }
+
+    /// Whether the user is currently "in" this meeting (meeting is in progress).
+    /// - Parameter now: The current time (defaults to now).
+    /// - Returns: `true` if now is between startTime and endTime.
+    func isInProgress(at now: Date = Date()) -> Bool {
+        self.startTime <= now && now < self.endTime
+    }
+
+    /// Whether this event has a video meeting link.
+    var hasVideoLink: Bool {
+        !self.meetingLinks.isEmpty
     }
 
     /// A context line describing the event for display in alerts.
@@ -168,5 +195,73 @@ public extension CalendarEvent {
         }
 
         return "\(attendeeText) · \(roleText)"
+    }
+}
+
+// MARK: - BackToBackState
+
+/// Represents the current back-to-back meeting state.
+public struct BackToBackState: Sendable, Equatable {
+    /// The current meeting the user is in (nil if not in a meeting).
+    public let currentMeeting: CalendarEvent?
+
+    /// The next meeting that is back-to-back with the current one (nil if none).
+    public let nextBackToBackMeeting: CalendarEvent?
+
+    /// Whether the user is currently in a back-to-back situation.
+    public var isBackToBack: Bool {
+        self.currentMeeting != nil && self.nextBackToBackMeeting != nil
+    }
+
+    public init(currentMeeting: CalendarEvent?, nextBackToBackMeeting: CalendarEvent?) {
+        self.currentMeeting = currentMeeting
+        self.nextBackToBackMeeting = nextBackToBackMeeting
+    }
+
+    /// Creates an empty state (not in any meeting).
+    public static let none = BackToBackState(currentMeeting: nil, nextBackToBackMeeting: nil)
+}
+
+// MARK: - BackToBackState Detection
+
+public extension BackToBackState {
+    /// Detects the current back-to-back state from a list of events.
+    /// - Parameters:
+    ///   - events: All calendar events to consider.
+    ///   - now: The current time (defaults to now).
+    /// - Returns: The detected back-to-back state.
+    static func detect(from events: [CalendarEvent], now: Date = Date()) -> BackToBackState {
+        // Find the current meeting (user is in a meeting with video link)
+        let currentMeeting = events.first { event in
+            event.isInProgress(at: now) && event.hasVideoLink
+        }
+
+        guard let current = currentMeeting else {
+            return .none
+        }
+
+        // Find the next meeting that would be back-to-back
+        let nextBackToBack = events
+            .filter { event in
+                event.startTime > now && event.hasVideoLink && event.id != current.id
+            }
+            .sorted { $0.startTime < $1.startTime }
+            .first { current.isBackToBack(with: $0) }
+
+        return BackToBackState(currentMeeting: current, nextBackToBackMeeting: nextBackToBack)
+    }
+
+    /// Minutes until the current meeting ends.
+    var minutesUntilCurrentEnds: Int? {
+        guard let current = currentMeeting else { return nil }
+        let interval = current.endTime.timeIntervalSinceNow
+        return max(0, Int(interval / 60))
+    }
+
+    /// Minutes until the next back-to-back meeting starts.
+    var minutesUntilNextStarts: Int? {
+        guard let next = nextBackToBackMeeting else { return nil }
+        let interval = next.startTime.timeIntervalSinceNow
+        return max(0, Int(interval / 60))
     }
 }

@@ -193,19 +193,63 @@ public actor NotificationScheduler: AlertScheduler {
         await self.center.notificationSettings()
     }
 
+    // MARK: - Banner Notifications
+
+    /// Shows an immediate notification banner for a downgraded alert.
+    ///
+    /// Unlike scheduled alerts that fire our custom modal, this shows a system
+    /// notification banner for less intrusive notifications during back-to-back meetings.
+    ///
+    /// - Parameters:
+    ///   - title: The notification title (e.g., "Up Next").
+    ///   - body: The notification body (e.g., "Meeting in 10m").
+    ///   - identifier: Unique identifier for the notification.
+    public func showBannerNotification(title: String, body: String, identifier: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = nil // Sound is handled separately by SoundPlayer
+        content.categoryIdentifier = Self.backToBackAlertCategory
+        content.interruptionLevel = .passive
+
+        // Immediate trigger (nil trigger means deliver immediately)
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil
+        )
+
+        do {
+            try await self.center.add(request)
+        } catch {
+            // Banner delivery failed - log but continue
+        }
+    }
+
+    /// Category identifier for back-to-back (downgraded) alerts.
+    public static let backToBackAlertCategory = "BACK_TO_BACK_ALERT"
+
     // MARK: - Private Helpers
 
     private func registerCategory() async {
         // Define category with hidden presentation
         // We intercept the notification before display to show our own modal
-        let category = UNNotificationCategory(
+        let meetingCategory = UNNotificationCategory(
             identifier: Self.meetingAlertCategory,
             actions: [],
             intentIdentifiers: [],
             options: [.hiddenPreviewsShowTitle]
         )
 
-        self.center.setNotificationCategories([category])
+        // Define category for back-to-back alerts - these show as banners
+        let backToBackCategory = UNNotificationCategory(
+            identifier: Self.backToBackAlertCategory,
+            actions: [],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        self.center.setNotificationCategories([meetingCategory, backToBackCategory])
     }
 
     private func fireAlert(alertId: String) async {

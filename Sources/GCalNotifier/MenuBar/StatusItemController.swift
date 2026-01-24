@@ -39,6 +39,17 @@ public enum StatusItemLogic {
         }
     }
 
+    /// Format back-to-back countdown string showing both current meeting end and next meeting start.
+    /// Format: "12m → 5m" (current ends in 12m, next starts in 5m)
+    public static func formatBackToBackCountdown(
+        currentEndsIn: TimeInterval,
+        nextStartsIn: TimeInterval
+    ) -> String {
+        let currentMinutes = max(0, Int(currentEndsIn / 60))
+        let nextMinutes = max(0, Int(nextStartsIn / 60))
+        return "\(currentMinutes)m → \(nextMinutes)m"
+    }
+
     /// Calculate the appropriate update interval based on time until meeting.
     public static func calculateUpdateInterval(secondsUntilMeeting: TimeInterval?) -> TimeInterval {
         guard let timeUntil = secondsUntilMeeting else {
@@ -113,6 +124,38 @@ public enum StatusItemLogic {
 
         return ("\(icon) \(countdown)", newState)
     }
+
+    /// Generate the display text for a back-to-back meeting situation.
+    /// Shows dual countdown: current meeting end time → next meeting start time
+    public static func generateBackToBackDisplayText(
+        state: StatusItemState,
+        backToBackState: BackToBackState,
+        now: Date = Date()
+    ) -> DisplayResult {
+        // Handle special states first
+        switch state {
+        case .offline:
+            return ("⚠️ --", state)
+        case .oauthNeeded:
+            return ("🔑", state)
+        case .normal, .alertWindow, .acknowledged:
+            break
+        }
+
+        // If not in a back-to-back situation, fall back to normal display
+        guard backToBackState.isBackToBack,
+              let current = backToBackState.currentMeeting,
+              let next = backToBackState.nextBackToBackMeeting
+        else {
+            return ("📅 --", state)
+        }
+
+        let currentEndsIn = current.endTime.timeIntervalSince(now)
+        let nextStartsIn = next.startTime.timeIntervalSince(now)
+
+        let countdown = self.formatBackToBackCountdown(currentEndsIn: currentEndsIn, nextStartsIn: nextStartsIn)
+        return ("📅 \(countdown)", state)
+    }
 }
 
 // MARK: - StatusItemController
@@ -135,6 +178,7 @@ public final class StatusItemController: NSObject {
     private var events: [CalendarEvent] = []
     private var nextMeeting: CalendarEvent?
     private var state: StatusItemState = .normal
+    private var backToBackState: BackToBackState = .none
 
     // MARK: - Delegates
 
@@ -178,12 +222,24 @@ public final class StatusItemController: NSObject {
 
     // MARK: - Public API
 
-    /// Update the events list and recalculate next meeting
+    /// Update the events list and recalculate next meeting and back-to-back state
     public func updateEvents(_ events: [CalendarEvent]) {
         self.events = events
         self.nextMeeting = StatusItemLogic.findNextMeeting(from: events)
+        self.backToBackState = BackToBackState.detect(from: events)
         updateDisplay()
         scheduleNextUpdate()
+    }
+
+    /// Update the back-to-back state explicitly (for external updates)
+    public func updateBackToBackState(_ state: BackToBackState) {
+        self.backToBackState = state
+        updateDisplay()
+    }
+
+    /// Get the current back-to-back state
+    public var currentBackToBackState: BackToBackState {
+        self.backToBackState
     }
 
     /// Set the current state (for external state changes like offline/oauth)
@@ -224,12 +280,22 @@ extension StatusItemController {
 
     /// Update the status item display based on current state and next meeting
     public func updateDisplay() {
-        let (text, newState) = StatusItemLogic.generateDisplayText(
-            state: self.state,
-            nextMeeting: self.nextMeeting
-        )
-        self.state = newState
-        self.updateStatusItemIfNeeded(text)
+        // Use back-to-back display if user is in a back-to-back situation
+        if self.backToBackState.isBackToBack {
+            let (text, newState) = StatusItemLogic.generateBackToBackDisplayText(
+                state: self.state,
+                backToBackState: self.backToBackState
+            )
+            self.state = newState
+            self.updateStatusItemIfNeeded(text)
+        } else {
+            let (text, newState) = StatusItemLogic.generateDisplayText(
+                state: self.state,
+                nextMeeting: self.nextMeeting
+            )
+            self.state = newState
+            self.updateStatusItemIfNeeded(text)
+        }
     }
 }
 

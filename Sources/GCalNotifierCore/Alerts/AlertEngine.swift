@@ -43,6 +43,46 @@ public actor DispatchAlertScheduler: AlertScheduler {
 /// Abstracted to allow testing with mocks.
 public protocol AlertDelivery: Sendable {
     func deliver(alert: ScheduledAlert) async
+    func deliverDowngraded(alert: ScheduledAlert, reason: AlertDowngradeReason) async
+}
+
+// MARK: - Alert Downgrade Reason
+
+/// Reason why an alert was downgraded from modal to notification banner.
+public enum AlertDowngradeReason: Sendable, Equatable {
+    /// User is currently in another meeting (back-to-back situation).
+    case backToBackMeeting
+    /// User is currently sharing their screen.
+    case screenSharing
+    /// Do Not Disturb is enabled.
+    case doNotDisturb
+}
+
+// MARK: - Back-to-Back Alert Context
+
+/// Context for back-to-back alert handling.
+public struct BackToBackAlertContext: Sendable, Equatable {
+    /// Whether the user is currently in a meeting.
+    public let isInMeeting: Bool
+
+    /// Whether this alert is for a back-to-back meeting.
+    public let isBackToBackSituation: Bool
+
+    /// The current meeting the user is in (if any).
+    public let currentMeeting: CalendarEvent?
+
+    public init(isInMeeting: Bool, isBackToBackSituation: Bool, currentMeeting: CalendarEvent?) {
+        self.isInMeeting = isInMeeting
+        self.isBackToBackSituation = isBackToBackSituation
+        self.currentMeeting = currentMeeting
+    }
+
+    /// No back-to-back context (user not in a meeting).
+    public static let none = BackToBackAlertContext(
+        isInMeeting: false,
+        isBackToBackSituation: false,
+        currentMeeting: nil
+    )
 }
 
 // MARK: - MissedAlertResult
@@ -101,6 +141,9 @@ public actor AlertEngine {
     private var alerts: [String: ScheduledAlert] = [:]
     private var acknowledgedEventIds: Set<String> = []
     private var isInitialized = false
+
+    /// Provider for back-to-back context. Set this to enable back-to-back detection during alerts.
+    private var backToBackContextProvider: (@Sendable (ScheduledAlert) async -> BackToBackAlertContext)?
 
     // MARK: - Public Access
 
@@ -264,6 +307,26 @@ public actor AlertEngine {
         }
     }
 
+    // MARK: - Back-to-Back Configuration
+
+    /// Sets the back-to-back context provider for smart alert handling.
+    ///
+    /// When set, the AlertEngine will check for back-to-back situations before firing alerts.
+    /// If the user is in a meeting and the upcoming meeting is back-to-back, stage 1 alerts
+    /// will be downgraded to notification banners instead of modal windows.
+    ///
+    /// - Parameter provider: A closure that returns the back-to-back context for a given alert.
+    public func setBackToBackContextProvider(
+        _ provider: @escaping @Sendable (ScheduledAlert) async -> BackToBackAlertContext
+    ) {
+        self.backToBackContextProvider = provider
+    }
+
+    /// Clears the back-to-back context provider.
+    public func clearBackToBackContextProvider() {
+        self.backToBackContextProvider = nil
+    }
+
     // MARK: - Missed Alert Handling
 
     /// Grace period for "meeting just started" alerts (5 minutes).
@@ -363,8 +426,39 @@ public actor AlertEngine {
     private func handleAlertFired(alertId: String) async {
         guard let alert = alerts[alertId] else { return }
         self.alerts.removeValue(forKey: alertId)
-        await self.delivery.deliver(alert: alert)
+
+        // Check for back-to-back context to potentially downgrade the alert
+        let shouldDowngrade = await self.shouldDowngradeAlert(alert)
+
+        if shouldDowngrade {
+            // Downgrade to notification banner instead of modal
+            await self.delivery.deliverDowngraded(alert: alert, reason: .backToBackMeeting)
+        } else {
+            // Normal alert delivery (modal)
+            await self.delivery.deliver(alert: alert)
+        }
+
         await self.persistAlerts()
+    }
+
+    /// Determines whether an alert should be downgraded based on back-to-back context.
+    ///
+    /// Stage 1 alerts should be downgraded when:
+    /// - User is currently in a meeting
+    /// - The alert is for a back-to-back meeting
+    ///
+    /// Stage 2 alerts are never downgraded (user needs urgent notification).
+    private func shouldDowngradeAlert(_ alert: ScheduledAlert) async -> Bool {
+        // Only downgrade stage 1 alerts
+        guard alert.stage == .stage1 else { return false }
+
+        // Check if we have a back-to-back context provider
+        guard let provider = backToBackContextProvider else { return false }
+
+        let context = await provider(alert)
+
+        // Downgrade if user is in a meeting and this is a back-to-back situation
+        return context.isInMeeting && context.isBackToBackSituation
     }
 
     private func persistAlerts() async {
@@ -382,5 +476,9 @@ public actor AlertEngine {
 private struct NoOpAlertDelivery: AlertDelivery {
     func deliver(alert _: ScheduledAlert) async {
         // No-op - real delivery will be implemented in UNUserNotificationCenter integration
+    }
+
+    func deliverDowngraded(alert _: ScheduledAlert, reason _: AlertDowngradeReason) async {
+        // No-op - real delivery will show notification banner instead of modal
     }
 }

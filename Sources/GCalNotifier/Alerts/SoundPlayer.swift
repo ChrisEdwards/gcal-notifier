@@ -9,6 +9,7 @@ public enum BuiltInSound: String, CaseIterable, Sendable {
     case gentleChime = "gentle-chime"
     case urgentTone = "urgent-tone"
     case bell
+    case subtleChime = "subtle-chime"
 
     /// Human-readable display name for preferences UI.
     public var displayName: String {
@@ -16,7 +17,13 @@ public enum BuiltInSound: String, CaseIterable, Sendable {
         case .gentleChime: "Gentle Chime"
         case .urgentTone: "Urgent Tone"
         case .bell: "Bell"
+        case .subtleChime: "Subtle Chime"
         }
+    }
+
+    /// Whether this sound is suitable for back-to-back (downgraded) alerts.
+    public var isSubtle: Bool {
+        self == .subtleChime
     }
 }
 
@@ -129,6 +136,27 @@ public final class SoundPlayer {
 
         let customPath = settings.customSoundPath
         self.play(named: soundName, customPath: customPath)
+    }
+
+    /// Play a subtle sound for downgraded (back-to-back) alerts.
+    ///
+    /// Uses the subtle chime sound which is less intrusive than normal alerts,
+    /// appropriate when the user is already in a meeting.
+    public func playSubtleAlertSound() {
+        self.play(.subtleChime)
+    }
+
+    /// Play a sound appropriate for a downgraded alert.
+    ///
+    /// - Parameter reason: The reason the alert was downgraded.
+    public func playDowngradedAlertSound(for reason: AlertDowngradeReason) {
+        switch reason {
+        case .backToBackMeeting:
+            self.playSubtleAlertSound()
+        case .screenSharing, .doNotDisturb:
+            // For screen sharing or DND, use the subtle sound as well
+            self.playSubtleAlertSound()
+        }
     }
 
     // MARK: - Test Functionality
