@@ -99,6 +99,7 @@ public actor SyncEngine {
     private let appState: AppStateStore
     private let eventFilter: EventFilter
     private let healthTracker: CalendarHealthTracker?
+    private let rateLimitManager: RateLimitManager?
     private let logger = Logger.sync
 
     // MARK: - State
@@ -120,18 +121,21 @@ public actor SyncEngine {
     ///   - appState: Storage for sync tokens and app state.
     ///   - eventFilter: Filter for determining which events to alert on.
     ///   - healthTracker: Optional tracker for per-calendar health monitoring.
+    ///   - rateLimitManager: Optional manager for rate limit backoff tracking.
     public init(
         calendarClient: GoogleCalendarClient,
         eventCache: EventCache,
         appState: AppStateStore,
         eventFilter: EventFilter,
-        healthTracker: CalendarHealthTracker? = nil
+        healthTracker: CalendarHealthTracker? = nil,
+        rateLimitManager: RateLimitManager? = nil
     ) {
         self.calendarClient = calendarClient
         self.eventCache = eventCache
         self.appState = appState
         self.eventFilter = eventFilter
         self.healthTracker = healthTracker
+        self.rateLimitManager = rateLimitManager
     }
 
     /// Sets the delegate for receiving sync updates.
@@ -286,9 +290,24 @@ public actor SyncEngine {
     // MARK: - Multi-Calendar Sync Helpers
 
     private func filterEnabledCalendars(_ calendarIds: [String]) async -> [String] {
-        guard let healthTracker else { return calendarIds }
         var enabled: [String] = []
-        for calendarId in calendarIds where await healthTracker.shouldPoll(calendarId) {
+        for calendarId in calendarIds {
+            // Skip disabled calendars (health tracker)
+            if let healthTracker {
+                let shouldPoll = await healthTracker.shouldPoll(calendarId)
+                if !shouldPoll {
+                    continue
+                }
+            }
+            // Skip rate-limited calendars
+            if let rateLimitManager {
+                let shouldSkip = await rateLimitManager.shouldSkip(calendarId: calendarId)
+                if shouldSkip {
+                    let remaining = await rateLimitManager.remainingBackoff(calendarId: calendarId)
+                    self.logger.info("Skipping rate-limited calendar \(calendarId), \(Int(remaining))s remaining")
+                    continue
+                }
+            }
             enabled.append(calendarId)
         }
         return enabled
@@ -320,14 +339,24 @@ public actor SyncEngine {
         do {
             let result = try await self.performSync(calendarId: calendarId)
             await self.healthTracker?.markSuccess(for: calendarId)
+            await self.rateLimitManager?.clearBackoff(calendarId: calendarId)
             return (calendarId, .success(result))
         } catch let error as CalendarError {
             await self.healthTracker?.markFailure(for: calendarId, error: error)
+            await self.handleRateLimitIfNeeded(calendarId: calendarId, error: error)
             return (calendarId, .failure(error))
         } catch {
             let calendarError = CalendarError.networkError(error.localizedDescription)
             await self.healthTracker?.markFailure(for: calendarId, error: calendarError)
             return (calendarId, .failure(calendarError))
+        }
+    }
+
+    private func handleRateLimitIfNeeded(calendarId: String, error: CalendarError) async {
+        guard let rateLimitManager else { return }
+        if case let .rateLimited(retryAfter) = error {
+            let retrySeconds = retryAfter.map { TimeInterval($0) }
+            await rateLimitManager.handleRateLimit(calendarId: calendarId, retryAfter: retrySeconds)
         }
     }
 
