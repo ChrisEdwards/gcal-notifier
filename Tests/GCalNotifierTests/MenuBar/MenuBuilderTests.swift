@@ -45,6 +45,65 @@ private func makeTestLink(urlString: String = "https://meet.google.com/abc-defg-
 
 @Suite("MenuBuilder Tests")
 struct MenuBuilderTests {
+    // MARK: - Notification Permission Warning
+
+    @Test("Shows notification warning when permission denied")
+    func showsNotificationWarningWhenDenied() {
+        let items = MenuBuilder.buildMenuItems(
+            events: [],
+            conflictingEventIds: [],
+            notificationPermissionDenied: true
+        )
+
+        guard case .notificationWarning = items[0] else {
+            Issue.record("Expected notificationWarning item first")
+            return
+        }
+        #expect(items[1] == .separator)
+    }
+
+    @Test("No notification warning when permission granted")
+    func noNotificationWarningWhenGranted() {
+        let items = MenuBuilder.buildMenuItems(
+            events: [],
+            conflictingEventIds: [],
+            notificationPermissionDenied: false
+        )
+
+        let hasWarning = items.contains { if case .notificationWarning = $0 { return true }; return false }
+        #expect(!hasWarning)
+    }
+
+    @Test("Notification warning appears before quick join")
+    func notificationWarningAppearsBeforeQuickJoin() {
+        let now = Date()
+        guard let link = makeTestLink() else { return }
+        let event = makeTestEvent(
+            id: "next-meeting",
+            startTime: now.addingTimeInterval(30 * 60),
+            meetingLinks: [link]
+        )
+
+        let items = MenuBuilder.buildMenuItems(
+            events: [event],
+            conflictingEventIds: [],
+            notificationPermissionDenied: true,
+            now: now
+        )
+
+        guard case .notificationWarning = items[0] else {
+            Issue.record("Expected notificationWarning item first")
+            return
+        }
+        #expect(items[1] == .separator)
+        guard case .quickJoin = items[2] else {
+            Issue.record("Expected quickJoin after warning")
+            return
+        }
+    }
+
+    // MARK: - Quick Join
+
     @Test("Builds menu with quick join when next meeting has link")
     func buildsQuickJoinSection() {
         let now = Date()
@@ -328,6 +387,11 @@ struct MenuCountdownFormattingTests {
 
 @Suite("MenuItem Equatable Tests")
 struct MenuItemEquatableTests {
+    @Test("Notification warning items are equal")
+    func notificationWarningsAreEqual() {
+        #expect(MenuBuilder.MenuItem.notificationWarning == MenuBuilder.MenuItem.notificationWarning)
+    }
+
     @Test("Separator items are equal")
     func separatorsAreEqual() {
         #expect(MenuBuilder.MenuItem.separator == MenuBuilder.MenuItem.separator)
@@ -351,6 +415,13 @@ struct MenuItemEquatableTests {
     func emptyStateItemsEqual() {
         let item1 = MenuBuilder.MenuItem.emptyState(message: "No meetings")
         let item2 = MenuBuilder.MenuItem.emptyState(message: "No meetings")
+        #expect(item1 == item2)
+    }
+
+    @Test("OpenNotificationSettings action items are equal")
+    func openNotificationSettingsActionItemsEqual() {
+        let item1 = MenuBuilder.MenuItem.action(title: "Open Settings", action: .openNotificationSettings)
+        let item2 = MenuBuilder.MenuItem.action(title: "Open Settings", action: .openNotificationSettings)
         #expect(item1 == item2)
     }
 }

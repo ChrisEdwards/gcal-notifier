@@ -10,6 +10,7 @@ import GCalNotifierCore
 public enum MenuBuilder {
     /// Menu item representation for testing and display logic.
     public enum MenuItem: Equatable, Sendable {
+        case notificationWarning
         case quickJoin(title: String, event: CalendarEvent)
         case conflictWarning(time: String, count: Int)
         case sectionHeader(title: String)
@@ -24,17 +25,31 @@ public enum MenuBuilder {
         case refresh
         case settings
         case quit
+        case openNotificationSettings
     }
 
     // MARK: - Public API
 
     /// Builds menu items from events and state.
+    /// - Parameters:
+    ///   - events: Calendar events to display
+    ///   - conflictingEventIds: IDs of events that have conflicts
+    ///   - notificationPermissionDenied: Whether notification permission was denied
+    ///   - now: Current date for filtering (defaults to now)
+    /// - Returns: Array of menu items to display
     public static func buildMenuItems(
         events: [CalendarEvent],
         conflictingEventIds: Set<String>,
+        notificationPermissionDenied: Bool = false,
         now: Date = Date()
     ) -> [MenuItem] {
         var items: [MenuItem] = []
+
+        // Notification permission warning at the top
+        if notificationPermissionDenied {
+            items.append(.notificationWarning)
+            items.append(.separator)
+        }
 
         let todaysEvents = Self.filterTodaysEvents(events, now: now)
         let nextMeeting = Self.findNextMeeting(from: todaysEvents, now: now)
@@ -150,6 +165,7 @@ public final class MenuController: NSObject {
 
     private var events: [CalendarEvent] = []
     private var conflictingEventIds: Set<String> = []
+    private var notificationPermissionDenied: Bool = false
 
     // MARK: - Callbacks
 
@@ -159,6 +175,7 @@ public final class MenuController: NSObject {
     public var onRefresh: (() -> Void)?
     public var onSettings: (() -> Void)?
     public var onQuit: (() -> Void)?
+    public var onOpenNotificationSettings: (() -> Void)?
 
     // MARK: - Public API
 
@@ -172,11 +189,17 @@ public final class MenuController: NSObject {
         self.conflictingEventIds = conflictingIds
     }
 
+    /// Updates the notification permission denied state.
+    public func updateNotificationPermissionDenied(_ denied: Bool) {
+        self.notificationPermissionDenied = denied
+    }
+
     /// Builds the menu from current state.
     public func buildMenu() -> NSMenu {
         let menuItems = MenuBuilder.buildMenuItems(
             events: self.events,
-            conflictingEventIds: self.conflictingEventIds
+            conflictingEventIds: self.conflictingEventIds,
+            notificationPermissionDenied: self.notificationPermissionDenied
         )
         return self.createMenu(from: menuItems)
     }
@@ -196,6 +219,9 @@ public final class MenuController: NSObject {
 
     private func createNSMenuItem(from item: MenuBuilder.MenuItem) -> NSMenuItem {
         switch item {
+        case .notificationWarning:
+            self.createNotificationWarningItem()
+
         case let .quickJoin(title, event):
             self.createQuickJoinItem(title: title, event: event)
 
@@ -217,6 +243,46 @@ public final class MenuController: NSObject {
         case .separator:
             .separator()
         }
+    }
+
+    private func createNotificationWarningItem() -> NSMenuItem {
+        let title = "Notifications disabled"
+        let subtitle = "Alerts won't appear. Click to enable."
+
+        let item = NSMenuItem(
+            title: title,
+            action: #selector(handleOpenNotificationSettings(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+
+        // Create attributed title with warning icon and subtitle
+        let warningIcon = NSAttributedString(
+            string: "⚠️ ",
+            attributes: [.font: NSFont.systemFont(ofSize: 13)]
+        )
+        let titleAttr = NSAttributedString(
+            string: title + "\n",
+            attributes: [
+                .font: NSFont.boldSystemFont(ofSize: 13),
+                .foregroundColor: NSColor.systemOrange,
+            ]
+        )
+        let subtitleAttr = NSAttributedString(
+            string: subtitle,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]
+        )
+
+        let fullTitle = NSMutableAttributedString()
+        fullTitle.append(warningIcon)
+        fullTitle.append(titleAttr)
+        fullTitle.append(subtitleAttr)
+        item.attributedTitle = fullTitle
+
+        return item
     }
 
     private func createQuickJoinItem(title: String, event: CalendarEvent) -> NSMenuItem {
@@ -300,6 +366,8 @@ public final class MenuController: NSObject {
             #selector(Self.handleSettings(_:))
         case .quit:
             #selector(Self.handleQuit(_:))
+        case .openNotificationSettings:
+            #selector(Self.handleOpenNotificationSettings(_:))
         }
 
         let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
@@ -346,10 +414,12 @@ public final class MenuController: NSObject {
 
         return submenu
     }
+}
 
-    // MARK: - Action Handlers
+// MARK: - MenuController Action Handlers
 
-    @objc private func handleJoinMeeting(_ sender: NSMenuItem) {
+extension MenuController {
+    @objc func handleJoinMeeting(_ sender: NSMenuItem) {
         guard let event = sender.representedObject as? CalendarEvent else { return }
 
         if let callback = onJoinMeeting {
@@ -359,7 +429,7 @@ public final class MenuController: NSObject {
         }
     }
 
-    @objc private func handleEventClicked(_ sender: NSMenuItem) {
+    @objc func handleEventClicked(_ sender: NSMenuItem) {
         guard let event = sender.representedObject as? CalendarEvent else { return }
 
         if let callback = onJoinMeeting {
@@ -369,7 +439,7 @@ public final class MenuController: NSObject {
         }
     }
 
-    @objc private func handleCopyLink(_ sender: NSMenuItem) {
+    @objc func handleCopyLink(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
 
         if let callback = onCopyLink {
@@ -380,13 +450,12 @@ public final class MenuController: NSObject {
         }
     }
 
-    @objc private func handleOpenInCalendar(_ sender: NSMenuItem) {
+    @objc func handleOpenInCalendar(_ sender: NSMenuItem) {
         guard let event = sender.representedObject as? CalendarEvent else { return }
 
         if let callback = onOpenInCalendar {
             callback(event)
         } else {
-            // Construct Google Calendar event URL
             let urlString = "https://calendar.google.com/calendar/event?eid=\(event.id)"
             if let url = URL(string: urlString) {
                 NSWorkspace.shared.open(url)
@@ -394,17 +463,15 @@ public final class MenuController: NSObject {
         }
     }
 
-    @objc private func handleRefresh(_: NSMenuItem) {
-        // Check if Option key is held for debug mode
+    @objc func handleRefresh(_: NSMenuItem) {
         let optionHeld = NSEvent.modifierFlags.contains(.option)
         if optionHeld {
             UserDefaults.standard.set("debug", forKey: "logLevel")
         }
-
         self.onRefresh?()
     }
 
-    @objc private func handleSettings(_: NSMenuItem) {
+    @objc func handleSettings(_: NSMenuItem) {
         if let callback = onSettings {
             callback()
         } else {
@@ -412,11 +479,15 @@ public final class MenuController: NSObject {
         }
     }
 
-    @objc private func handleQuit(_: NSMenuItem) {
+    @objc func handleQuit(_: NSMenuItem) {
         if let callback = onQuit {
             callback()
         } else {
             NSApp.terminate(nil)
         }
+    }
+
+    @objc func handleOpenNotificationSettings(_: NSMenuItem) {
+        self.onOpenNotificationSettings?()
     }
 }
