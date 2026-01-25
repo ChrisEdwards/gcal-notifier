@@ -4,14 +4,11 @@ import Foundation
 
 /// Polling intervals for adaptive sync scheduling.
 public enum PollingInterval: TimeInterval, Sendable {
-    /// Default interval when no meetings are within 2 hours.
-    case idle = 900 // 15 minutes
+    /// Default interval (5 minutes).
+    case normal = 300
 
-    /// Interval when a meeting is within 1 hour.
-    case upcoming = 300 // 5 minutes
-
-    /// Interval when a meeting is within 10 minutes.
-    case imminent = 60 // 1 minute
+    /// Interval when a meeting is within 10 minutes (1 minute).
+    case imminent = 60
 }
 
 // MARK: - SyncResult

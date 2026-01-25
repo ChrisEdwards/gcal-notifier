@@ -27,7 +27,7 @@ extension AppDelegate {
         } catch {
             Logger.app.error("Sync failed: \(error.localizedDescription)")
             // On failure, retry with idle interval
-            self.scheduleSyncPolling(interval: PollingInterval.idle.rawValue)
+            self.scheduleSyncPolling(interval: PollingInterval.normal.rawValue)
         }
     }
 
@@ -36,7 +36,7 @@ extension AppDelegate {
     func startSyncPolling() {
         Logger.app.info("Starting automatic sync polling")
         // Start with idle interval - first sync will adjust based on events
-        self.scheduleSyncPolling(interval: PollingInterval.idle.rawValue)
+        self.scheduleSyncPolling(interval: PollingInterval.normal.rawValue)
     }
 
     /// Stops automatic background sync polling.

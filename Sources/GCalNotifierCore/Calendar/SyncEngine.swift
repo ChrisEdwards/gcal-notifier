@@ -150,17 +150,16 @@ public actor SyncEngine {
         let upcomingEvents = events.filter { $0.startTime > now }
 
         guard let nextEvent = upcomingEvents.min(by: { $0.startTime < $1.startTime }) else {
-            return .idle
+            return .normal
         }
 
         let timeUntilNext = nextEvent.startTime.timeIntervalSince(now)
 
-        if timeUntilNext <= 600 { // 10 minutes
+        // Poll every minute when meeting is within 10 minutes
+        if timeUntilNext <= 600 {
             return .imminent
-        } else if timeUntilNext <= 3600 { // 1 hour
-            return .upcoming
         } else {
-            return .idle
+            return .normal
         }
     }
 

@@ -393,20 +393,20 @@ struct SyncEngineTests {
 
 @Suite("SyncEngine Polling Interval Tests")
 struct SyncEnginePollingIntervalTests {
-    @Test("calculatePollingInterval returns idle when no meetings in 2 hours")
-    func calculatePollingIntervalNoMeetingsReturnsIdle() async throws {
+    @Test("calculatePollingInterval returns normal when meeting is more than 10 minutes away")
+    func calculatePollingIntervalFarMeetingReturnsNormal() async throws {
         let now = Date()
         let farEvent = makeEvent(startTime: now.addingTimeInterval(8000)) // ~2.2 hours
         let interval = self.calculatePollingInterval(events: [farEvent], now: now)
-        #expect(interval == .idle)
+        #expect(interval == .normal)
     }
 
-    @Test("calculatePollingInterval returns upcoming when meeting within 1 hour")
-    func calculatePollingIntervalMeetingWithin1HourReturnsUpcoming() async throws {
+    @Test("calculatePollingInterval returns normal when meeting within 1 hour but more than 10 min")
+    func calculatePollingIntervalMeetingWithin1HourReturnsNormal() async throws {
         let now = Date()
         let soonEvent = makeEvent(startTime: now.addingTimeInterval(2400)) // 40 minutes
         let interval = self.calculatePollingInterval(events: [soonEvent], now: now)
-        #expect(interval == .upcoming)
+        #expect(interval == .normal)
     }
 
     @Test("calculatePollingInterval returns imminent when meeting within 10 minutes")
@@ -417,10 +417,10 @@ struct SyncEnginePollingIntervalTests {
         #expect(interval == .imminent)
     }
 
-    @Test("calculatePollingInterval returns idle when no events")
-    func calculatePollingIntervalNoEventsReturnsIdle() async throws {
+    @Test("calculatePollingInterval returns normal when no events")
+    func calculatePollingIntervalNoEventsReturnsNormal() async throws {
         let interval = self.calculatePollingInterval(events: [], now: Date())
-        #expect(interval == .idle)
+        #expect(interval == .normal)
     }
 
     @Test("calculatePollingInterval ignores past events")
@@ -428,7 +428,7 @@ struct SyncEnginePollingIntervalTests {
         let now = Date()
         let pastEvent = makeEvent(startTime: now.addingTimeInterval(-3600)) // 1 hour ago
         let interval = self.calculatePollingInterval(events: [pastEvent], now: now)
-        #expect(interval == .idle)
+        #expect(interval == .normal)
     }
 
     @Test("calculatePollingInterval uses earliest upcoming event")
@@ -445,17 +445,15 @@ struct SyncEnginePollingIntervalTests {
         let upcomingEvents = events.filter { $0.startTime > now }
 
         guard let nextEvent = upcomingEvents.min(by: { $0.startTime < $1.startTime }) else {
-            return .idle
+            return .normal
         }
 
         let timeUntilNext = nextEvent.startTime.timeIntervalSince(now)
 
         if timeUntilNext <= 600 { // 10 minutes
             return .imminent
-        } else if timeUntilNext <= 3600 { // 1 hour
-            return .upcoming
         } else {
-            return .idle
+            return .normal
         }
     }
 }
