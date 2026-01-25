@@ -306,9 +306,11 @@ struct AccountTab: View {
     @State private var syncStatusMessage: String?
 
     private let oauthProvider: GoogleOAuthProvider
+    private let eventCache: EventCache?
 
-    init(oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider()) {
+    init(oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider(), eventCache: EventCache? = nil) {
         self.oauthProvider = oauthProvider
+        self.eventCache = eventCache
     }
 
     var body: some View {
@@ -416,10 +418,21 @@ struct AccountTab: View {
                 to: thirtyDaysFromNow
             )
 
+            // Persist events to cache if available
+            if let eventCache {
+                try await eventCache.merge(
+                    events: response.events,
+                    deletedEventIds: [],
+                    for: "primary",
+                    isFullSync: true
+                )
+            }
+
             try await appState.setLastFullSync(Date())
             self.lastSyncTime = Date()
 
-            self.syncStatusMessage = "Synced \(response.events.count) events"
+            let persistedStatus = self.eventCache != nil ? " and saved" : " (not saved - cache unavailable)"
+            self.syncStatusMessage = "Synced \(response.events.count) events\(persistedStatus)"
         } catch {
             self.lastSyncError = "Sync failed: \(error.localizedDescription)"
             self.syncStatusMessage = nil

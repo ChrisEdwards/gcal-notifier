@@ -259,7 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Create new settings window with SwiftUI content
-        let hostingController = NSHostingController(rootView: PreferencesView())
+        let hostingController = NSHostingController(rootView: PreferencesView(eventCache: self.eventCache))
         let window = NSWindow(contentViewController: hostingController)
         window.title = "GCalNotifier Settings"
         window.styleMask = [.titled, .closable]

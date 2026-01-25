@@ -4,9 +4,11 @@ import SwiftUI
 /// Main preferences window with tabbed interface for all application settings.
 struct PreferencesView: View {
     @State private var settings: SettingsStore
+    private let eventCache: EventCache?
 
-    init(settings: SettingsStore = SettingsStore()) {
+    init(settings: SettingsStore = SettingsStore(), eventCache: EventCache? = nil) {
         self._settings = State(initialValue: settings)
+        self.eventCache = eventCache
     }
 
     var body: some View {
@@ -26,7 +28,7 @@ struct PreferencesView: View {
             ShortcutsTab(settings: self.settings)
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
 
-            AccountTab()
+            AccountTab(eventCache: self.eventCache)
                 .tabItem { Label("Account", systemImage: "person.circle") }
         }
         .frame(width: 500, height: 400)
