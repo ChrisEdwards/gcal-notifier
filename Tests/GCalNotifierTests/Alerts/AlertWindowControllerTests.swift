@@ -182,14 +182,15 @@ struct AlertWindowControllerTests {
     }
 
     @MainActor
-    @Test("Panel has non-activating panel style")
-    func panelHasNonActivatingStyle() {
+    @Test("Panel uses standard activating style for proper cursor handling")
+    func panelUsesActivatingStyle() {
         let controller = AlertWindowController()
         guard let panel = controller.window as? NSPanel else {
             Issue.record("Window is not an NSPanel")
             return
         }
-        #expect(panel.styleMask.contains(.nonactivatingPanel))
+        // Panel should NOT be non-activating to ensure proper cursor and interaction behavior
+        #expect(!panel.styleMask.contains(.nonactivatingPanel))
     }
 }
 

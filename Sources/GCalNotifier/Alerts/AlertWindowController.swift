@@ -3,44 +3,10 @@ import GCalNotifierCore
 import OSLog
 import SwiftUI
 
-// MARK: - Custom Hosting View for First Mouse Support
+// MARK: - Alert Hosting View
 
-/// Custom NSHostingView that accepts first mouse events and handles cursor updates.
-/// This is required for non-activating panels to properly handle mouse events
-/// including cursor changes when hovering over buttons.
-private class AlertHostingView<Content: View>: NSHostingView<Content> {
-    private var trackingArea: NSTrackingArea?
-
-    /// Accept first mouse so clicks and hover work without first activating the window.
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        true
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-
-        // Remove old tracking area
-        if let existing = trackingArea {
-            removeTrackingArea(existing)
-        }
-
-        // Add tracking area that works even when window is not key (for non-activating panels)
-        let newArea = NSTrackingArea(
-            rect: bounds,
-            options: [.cursorUpdate, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(newArea)
-        trackingArea = newArea
-    }
-
-    override func cursorUpdate(with event: NSEvent) {
-        // Let SwiftUI handle cursor updates by not calling super and letting
-        // the event propagate to subviews
-        super.cursorUpdate(with: event)
-    }
-}
+/// Standard NSHostingView for alert content.
+private class AlertHostingView<Content: View>: NSHostingView<Content> {}
 
 // MARK: - Alert Window Actions
 
@@ -192,9 +158,12 @@ public final class AlertWindowController: NSWindowController {
     // MARK: - Initialization
 
     public convenience init() {
+        // Use a regular panel that activates normally - this ensures proper cursor
+        // handling and standard window behavior. The panel will float above other
+        // windows but activate when the user interacts with it.
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
-            styleMask: [.titled, .closable, .nonactivatingPanel],
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: true
         )
@@ -241,9 +210,6 @@ public final class AlertWindowController: NSWindowController {
         panel.backgroundColor = NSColor.windowBackgroundColor
         panel.hasShadow = true
         panel.isMovableByWindowBackground = true
-
-        // Enable mouse moved events for cursor updates in non-activating panel
-        panel.acceptsMouseMovedEvents = true
 
         // Set delegate to handle window close button
         panel.delegate = self
