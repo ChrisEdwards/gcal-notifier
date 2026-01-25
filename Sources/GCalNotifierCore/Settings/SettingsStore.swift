@@ -27,30 +27,65 @@ public final class SettingsStore: @unchecked Sendable {
     // MARK: - Alert Timing (0 = disabled)
 
     public var alertStage1Minutes: Int {
-        get { self.defaults.object(forKey: Keys.alertStage1Minutes) as? Int ?? 10 }
-        set { self.defaults.set(newValue, forKey: Keys.alertStage1Minutes) }
+        get {
+            access(keyPath: \.alertStage1Minutes)
+            return self.defaults.object(forKey: Keys.alertStage1Minutes) as? Int ?? 10
+        }
+        set {
+            withMutation(keyPath: \.alertStage1Minutes) {
+                self.defaults.set(newValue, forKey: Keys.alertStage1Minutes)
+            }
+        }
     }
 
     public var alertStage2Minutes: Int {
-        get { self.defaults.object(forKey: Keys.alertStage2Minutes) as? Int ?? 2 }
-        set { self.defaults.set(newValue, forKey: Keys.alertStage2Minutes) }
+        get {
+            access(keyPath: \.alertStage2Minutes)
+            return self.defaults.object(forKey: Keys.alertStage2Minutes) as? Int ?? 2
+        }
+        set {
+            withMutation(keyPath: \.alertStage2Minutes) {
+                self.defaults.set(newValue, forKey: Keys.alertStage2Minutes)
+            }
+        }
     }
 
     // MARK: - Sounds
 
     public var stage1Sound: String {
-        get { self.defaults.string(forKey: Keys.stage1Sound) ?? "glass" }
-        set { self.defaults.set(newValue, forKey: Keys.stage1Sound) }
+        get {
+            access(keyPath: \.stage1Sound)
+            return self.defaults.string(forKey: Keys.stage1Sound) ?? "glass"
+        }
+        set {
+            withMutation(keyPath: \.stage1Sound) {
+                self.defaults.set(newValue, forKey: Keys.stage1Sound)
+            }
+        }
     }
 
     public var stage2Sound: String {
-        get { self.defaults.string(forKey: Keys.stage2Sound) ?? "hero" }
-        set { self.defaults.set(newValue, forKey: Keys.stage2Sound) }
+        get {
+            access(keyPath: \.stage2Sound)
+            return self.defaults.string(forKey: Keys.stage2Sound) ?? "hero"
+        }
+        set {
+            withMutation(keyPath: \.stage2Sound) {
+                self.defaults.set(newValue, forKey: Keys.stage2Sound)
+            }
+        }
     }
 
     public var customSoundPath: String? {
-        get { self.defaults.string(forKey: Keys.customSoundPath) }
-        set { self.defaults.set(newValue, forKey: Keys.customSoundPath) }
+        get {
+            access(keyPath: \.customSoundPath)
+            return self.defaults.string(forKey: Keys.customSoundPath)
+        }
+        set {
+            withMutation(keyPath: \.customSoundPath) {
+                self.defaults.set(newValue, forKey: Keys.customSoundPath)
+            }
+        }
     }
 
     // MARK: - Filtering (arrays as JSON strings)
@@ -97,23 +132,44 @@ public final class SettingsStore: @unchecked Sendable {
     // MARK: - Startup
 
     public var launchAtLogin: Bool {
-        get { self.defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? true }
-        set { self.defaults.set(newValue, forKey: Keys.launchAtLogin) }
+        get {
+            access(keyPath: \.launchAtLogin)
+            return self.defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? true
+        }
+        set {
+            withMutation(keyPath: \.launchAtLogin) {
+                self.defaults.set(newValue, forKey: Keys.launchAtLogin)
+            }
+        }
     }
 
     // MARK: - Presentation Mode
 
     public var suppressDuringScreenShare: Bool {
-        get { self.defaults.object(forKey: Keys.suppressDuringScreenShare) as? Bool ?? true }
-        set { self.defaults.set(newValue, forKey: Keys.suppressDuringScreenShare) }
+        get {
+            access(keyPath: \.suppressDuringScreenShare)
+            return self.defaults.object(forKey: Keys.suppressDuringScreenShare) as? Bool ?? true
+        }
+        set {
+            withMutation(keyPath: \.suppressDuringScreenShare) {
+                self.defaults.set(newValue, forKey: Keys.suppressDuringScreenShare)
+            }
+        }
     }
 
     // MARK: - Keyboard Shortcuts
 
     /// Whether global keyboard shortcuts are enabled.
     public var shortcutsEnabled: Bool {
-        get { self.defaults.object(forKey: Keys.shortcutsEnabled) as? Bool ?? true }
-        set { self.defaults.set(newValue, forKey: Keys.shortcutsEnabled) }
+        get {
+            access(keyPath: \.shortcutsEnabled)
+            return self.defaults.object(forKey: Keys.shortcutsEnabled) as? Bool ?? true
+        }
+        set {
+            withMutation(keyPath: \.shortcutsEnabled) {
+                self.defaults.set(newValue, forKey: Keys.shortcutsEnabled)
+            }
+        }
     }
 
     // MARK: - Initialization
