@@ -276,12 +276,10 @@ public extension AlertWindowController {
             return
         }
 
-        // Show
+        // Show and bring to front
         self.positionWindow()
         showWindow(nil)
-
-        // Bring to front without stealing focus
-        window?.orderFrontRegardless()
+        window?.makeKeyAndOrderFront(nil)
 
         Logger.alerts.info("Alert shown for event: \(event.id) stage: \(stage.rawValue)")
     }
@@ -324,12 +322,10 @@ public extension AlertWindowController {
             return
         }
 
-        // Show
+        // Show and bring to front
         self.positionWindow()
         showWindow(nil)
-
-        // Bring to front without stealing focus
-        window?.orderFrontRegardless()
+        window?.makeKeyAndOrderFront(nil)
 
         Logger.alerts.info("Alert shown for event: \(event.id) stage: \(stage.rawValue)")
     }
