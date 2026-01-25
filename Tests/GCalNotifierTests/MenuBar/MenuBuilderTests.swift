@@ -41,6 +41,14 @@ private func makeTestLink(urlString: String = "https://meet.google.com/abc-defg-
     return MeetingLink(url: url)
 }
 
+/// Creates a "now" time at 10 AM today to avoid late-night test failures.
+/// When tests run late at night, adding 1 hour to actual now() can push events to tomorrow.
+private func testNow() -> Date {
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    return calendar.date(byAdding: .hour, value: 10, to: today)!
+}
+
 // MARK: - MenuBuilder Tests
 
 @Suite("MenuBuilder Tests")
@@ -76,7 +84,7 @@ struct MenuBuilderTests {
 
     @Test("Notification warning appears before quick join")
     func notificationWarningAppearsBeforeQuickJoin() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else { return }
         let event = makeTestEvent(
             id: "next-meeting",
@@ -106,7 +114,7 @@ struct MenuBuilderTests {
 
     @Test("Builds menu with quick join when next meeting has link")
     func buildsQuickJoinSection() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else {
             Issue.record("Failed to create test link")
             return
@@ -131,7 +139,7 @@ struct MenuBuilderTests {
 
     @Test("Skips quick join when no meetings have links")
     func skipsQuickJoinWithoutLinks() {
-        let now = Date()
+        let now = testNow()
         let event = makeTestEvent(startTime: now.addingTimeInterval(30 * 60), meetingLinks: [])
 
         let items = MenuBuilder.buildMenuItems(events: [event], conflictingEventIds: [], now: now)
@@ -144,7 +152,7 @@ struct MenuBuilderTests {
 
     @Test("Shows conflict warning when conflicts exist")
     func showsConflictWarning() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else { return }
         let event1 = makeTestEvent(id: "event1", startTime: now.addingTimeInterval(60 * 60), meetingLinks: [link])
         let event2 = makeTestEvent(id: "event2", startTime: now.addingTimeInterval(60 * 60), meetingLinks: [link])
@@ -197,7 +205,7 @@ struct MenuBuilderTests {
 struct MeetingItemTests {
     @Test("Meeting with link shows checkmark icon and is enabled")
     func meetingWithLinkShowsCheckmark() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else { return }
         let event = makeTestEvent(startTime: now.addingTimeInterval(60 * 60), meetingLinks: [link])
         let items = MenuBuilder.buildMenuItems(events: [event], conflictingEventIds: [], now: now)
@@ -213,7 +221,7 @@ struct MeetingItemTests {
 
     @Test("Meeting without link shows circle icon and is disabled")
     func meetingWithoutLinkShowsCircle() {
-        let now = Date()
+        let now = testNow()
         let event = makeTestEvent(startTime: now.addingTimeInterval(60 * 60), meetingLinks: [])
         let items = MenuBuilder.buildMenuItems(events: [event], conflictingEventIds: [], now: now)
         let meetingItem = items.first { if case .meeting = $0 { return true }; return false }
@@ -228,7 +236,7 @@ struct MeetingItemTests {
 
     @Test("Conflicting meeting shows exclamation icon")
     func conflictingMeetingShowsExclamation() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else { return }
         let event = makeTestEvent(id: "conflicting", startTime: now.addingTimeInterval(60 * 60), meetingLinks: [link])
         let items = MenuBuilder.buildMenuItems(events: [event], conflictingEventIds: ["conflicting"], now: now)
@@ -243,7 +251,7 @@ struct MeetingItemTests {
 
     @Test("Meeting title truncated to 25 characters")
     func meetingTitleTruncated() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else { return }
         let longTitle = "This is a very long meeting title that exceeds twenty five characters"
         let event = makeTestEvent(title: longTitle, startTime: now.addingTimeInterval(60 * 60), meetingLinks: [link])
@@ -265,7 +273,7 @@ struct MeetingItemTests {
 struct MenuEventFilteringTests {
     @Test("Filters out all-day events")
     func filtersAllDayEvents() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else { return }
         let allDayEvent = makeTestEvent(
             id: "all-day",
@@ -288,7 +296,7 @@ struct MenuEventFilteringTests {
 
     @Test("Filters out events from other days")
     func filtersOtherDayEvents() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else { return }
         let tomorrowEvent = makeTestEvent(
             id: "tomorrow",
@@ -335,7 +343,7 @@ struct MenuEventFilteringTests {
 
     @Test("Quick join picks next future meeting with link")
     func quickJoinPicksNextFuture() {
-        let now = Date()
+        let now = testNow()
         guard let link = makeTestLink() else { return }
         let pastEvent = makeTestEvent(
             id: "past",
@@ -365,7 +373,7 @@ struct MenuEventFilteringTests {
 struct MenuCountdownFormattingTests {
     @Test("Formats countdown correctly")
     func formatsCountdownCorrectly() {
-        let now = Date()
+        let now = testNow()
         let event = makeTestEvent(startTime: now.addingTimeInterval(32 * 60))
         let countdown = MenuBuilder.formatCountdown(to: event, now: now)
         #expect(countdown == "32m")
@@ -373,7 +381,7 @@ struct MenuCountdownFormattingTests {
 
     @Test("Formats countdown with hours")
     func formatsCountdownWithHours() {
-        let now = Date()
+        let now = testNow()
         let event = makeTestEvent(startTime: now.addingTimeInterval(90 * 60))
         let countdown = MenuBuilder.formatCountdown(to: event, now: now)
         #expect(countdown == "1h 30m")
@@ -381,7 +389,7 @@ struct MenuCountdownFormattingTests {
 
     @Test("Shows 'now' for past events")
     func showsNowForPastEvents() {
-        let now = Date()
+        let now = testNow()
         let event = makeTestEvent(startTime: now.addingTimeInterval(-5 * 60))
         let countdown = MenuBuilder.formatCountdown(to: event, now: now)
         #expect(countdown == "now")
