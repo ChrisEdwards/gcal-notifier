@@ -37,6 +37,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Alert window controller for meeting alerts
     private var alertWindowController: AlertWindowController?
 
+    /// OAuth provider for Google authentication
+    private let oauthProvider = GoogleOAuthProvider()
+
+    /// App state store for sync tokens
+    private var appStateStore: AppStateStore?
+
+    /// Calendar sync engine - orchestrates sync operations
+    private var syncEngine: SyncEngine?
+
     // MARK: - Handlers
 
     private let firstLaunchHandler = FirstLaunchHandler()
@@ -76,8 +85,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Logger.app.error("Failed to create EventCache: \(error.localizedDescription)")
         }
 
+        // Create AppStateStore for sync tokens
+        do {
+            self.appStateStore = try AppStateStore()
+            Logger.app.info("AppStateStore initialized successfully")
+        } catch {
+            Logger.app.error("Failed to create AppStateStore: \(error.localizedDescription)")
+        }
+
+        // Create SyncEngine if all dependencies are available
+        if let eventCache, let appStateStore {
+            let httpClient = URLSessionHTTPClient()
+            let calendarClient = GoogleCalendarClient(httpClient: httpClient, tokenProvider: self.oauthProvider)
+            let eventFilter = EventFilter(settings: self.settingsStore)
+
+            self.syncEngine = SyncEngine(
+                calendarClient: calendarClient,
+                eventCache: eventCache,
+                appState: appStateStore,
+                eventFilter: eventFilter
+            )
+            Logger.app.info("SyncEngine initialized successfully")
+        } else {
+            Logger.app.warning("SyncEngine not created: missing EventCache or AppStateStore")
+        }
+
         // Create AlertWindowController
         self.alertWindowController = AlertWindowController()
+
+        // Load stored OAuth credentials (async)
+        Task {
+            do {
+                try await self.oauthProvider.loadStoredCredentials()
+                let state = await self.oauthProvider.state
+                Logger.app.info("OAuth state after loading credentials: \(String(describing: state))")
+            } catch {
+                Logger.app.error("Failed to load OAuth credentials: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func setupShortcuts() {
