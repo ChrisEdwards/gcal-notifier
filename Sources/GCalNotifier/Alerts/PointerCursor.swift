@@ -1,31 +1,12 @@
-import AppKit
 import SwiftUI
 
-// MARK: - Pointer Cursor Button Style
-
-/// A button style that shows the pointing hand cursor on hover.
-struct PointerButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-    }
-}
+// MARK: - Pointer Cursor Extension
 
 extension View {
     /// Applies the pointing hand cursor when hovering over this view.
+    /// Uses the native SwiftUI `.pointerStyle(.link)` API for proper cursor handling
+    /// in non-activating panels.
     func pointerCursor() -> some View {
-        self.onHover { hovering in
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
+        self.pointerStyle(.link)
     }
 }

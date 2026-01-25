@@ -396,7 +396,7 @@ struct AccountTab: View {
         Button("Force Full Sync") {
             Task { await self.forceFullSync() }
         }
-        .buttonStyle(PointerButtonStyle())
+        .pointerCursor()
         .disabled(self.isLoadingSync || !self.authState.canMakeApiCalls)
         .help("Clears all sync tokens and performs a fresh calendar sync")
     }
