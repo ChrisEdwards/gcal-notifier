@@ -93,9 +93,9 @@ struct GoogleOAuthProviderTests {
 
         try await ctx.provider.configure(clientId: "test-client-id", clientSecret: "test-secret")
 
-        let stored = try await ctx.keychainManager.loadClientCredentials()
-        #expect(stored?.clientId == "test-client-id")
-        #expect(stored?.clientSecret == "test-secret")
+        let stored = try await ctx.keychainManager.loadOAuthData()
+        #expect(stored?.credentials.clientId == "test-client-id")
+        #expect(stored?.credentials.clientSecret == "test-secret")
     }
 
     @Test("Configure with empty client ID throws invalidCredentials")

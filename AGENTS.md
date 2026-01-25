@@ -119,7 +119,7 @@ sg -p '$VAR.transform($$$)' -l swift            # Find method calls
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
+   br sync
    git push
    git status  # MUST show "up to date with origin"
    ```
@@ -135,36 +135,100 @@ sg -p '$VAR.transform($$$)' -l swift            # Find method calls
 
 ---
 
-## Beads Rust (br) — Dependency-Aware Issue Tracking
+## Issue Tracking with beads-rust
 
-br provides a lightweight, dependency-aware issue database and CLI for selecting "ready work," setting priorities, and tracking status.
+This project uses **br** (beads-rust) for issue tracking. Data is stored in `.beads/` directory.
 
-### Essential Commands
+### Quick Reference
 
 ```bash
-br ready              # Show issues ready to work (no blockers)
-br list --status open # All open issues
-br show <id>          # Full issue details with dependencies
-br create --title "Fix bug" --type bug --priority 2 --description "Details here"
-br update <id> --status in_progress
-br close <id> --reason "Completed"
-br sync               # Export to JSONL for git sync
+br ready              # Find available work (unblocked issues)
+br list               # List all open issues
+br list --all         # Include closed issues
+br show <id>          # View issue details with dependencies
+br show <id> --json   # JSON output for programmatic use
 ```
 
-### Workflow Pattern
+### Creating & Managing Issues
 
-1. **Start**: Run `br ready --json` to find actionable work
-2. **Claim**: Use `br update <id> --status in_progress`
-3. **Work**: Implement the task
-4. **Complete**: Use `br close <id> --reason "Done"`
-5. **Sync**: Always run `br sync` at session end
+```bash
+# Create issues
+br create "Title" --type task --priority 2 --description "Details"
+br create "Epic title" --type epic --priority 1
+br create "Child task" --type task --parent <epic-id>
 
-### Key Concepts
+# Update status
+br update <id> --status in_progress   # Claim work
+br update <id> --status open          # Release work
+br update <id> --assignee "email"     # Assign to someone
 
-- **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
-- **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog
-- **Types**: task, bug, feature, epic, question, docs
-- **JSON output**: Always use `--json` or `--robot` when parsing programmatically
+# Close issues
+br close <id>                         # Mark complete
+br close <id> --reason "explanation"  # With reason
+```
+
+### Dependencies
+
+```bash
+br dep add <issue> <depends-on>       # Add dependency (issue depends on depends-on)
+br dep remove <issue> <depends-on>    # Remove dependency
+br dep list <id>                      # List dependencies
+br dep tree <id>                      # Show dependency tree
+br dep cycles                         # Detect circular dependencies
+```
+
+### Filtering & Search
+
+```bash
+br list --status open                 # Filter by status
+br list --type task                   # Filter by type (task, bug, feature, epic)
+br list --priority 1                  # Filter by priority (0-4, 0=critical)
+br list --label backend               # Filter by label
+br list --assignee "email"            # Filter by assignee
+br ready --type task                  # Ready tasks only (exclude epics)
+```
+
+### Syncing with Git
+
+```bash
+br sync --flush-only                  # Export DB to JSONL (for commits)
+git add .beads/ && git commit         # Commit issue changes
+```
+
+### JSON Output
+
+Most commands support `--json` for programmatic access:
+
+```bash
+br list --json | jq '.[0]'            # First issue
+br ready --json | jq 'length'         # Count of ready issues
+br show <id> --json | jq '.dependents'  # Get children of epic
+```
+
+### Priority Levels
+
+| Priority | Meaning |
+|----------|---------|
+| P0 (0) | Critical - Drop everything |
+| P1 (1) | High - Do soon |
+| P2 (2) | Medium - Normal work |
+| P3 (3) | Low - When time permits |
+| P4 (4) | Backlog - Someday/maybe |
+
+### Issue Types
+
+- `epic` - Large feature or initiative containing child tasks
+- `feature` - New functionality
+- `task` - General work item
+- `bug` - Defect to fix
+
+### Parent-Child Relationships
+
+When you create a task with `--parent <epic-id>`, a parent-child dependency is created. The epic's `dependents` field lists all children:
+
+```bash
+br show <epic-id> --json | jq '.dependents[] | select(.dependency_type == "parent-child")'
+```
 
 ---
 
@@ -191,3 +255,15 @@ Keep lines under 150 chars.
 Keeep files under 1000 lines long.
 Keep function bodies less then 100 lines.long.
 Keep cyclomatic complexity below 20.
+
+When a file gets too big, don't compromise code quality to make it smaller. THE WHOLE POINT OF THESE RESTRICTIONS IS TO IMPROVE CODE QUALITY. JUST DO IT! Refactor, don't just delete lines. Improve the code.
+
+---
+
+## Philosophy
+
+This codebase will outlive you. Every shortcut becomes someone else's burden. Every hack compounds into technical debt that slows the whole team down.
+
+You are not just writing code. You are shaping the future of this project. The patterns you establish will be copied. The corners you cut will be cut again.
+
+Fight entropy. Leave the codebase better than you found it.

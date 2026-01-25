@@ -32,6 +32,17 @@ public struct OAuthTokens: Codable, Sendable, Equatable {
     public var expiresIn: TimeInterval { self.expiresAt.timeIntervalSinceNow }
 }
 
+/// Combined OAuth data stored as a single Keychain item to minimize password prompts.
+public struct OAuthData: Codable, Sendable, Equatable {
+    public let credentials: OAuthClientCredentials
+    public let tokens: OAuthTokens?
+
+    public init(credentials: OAuthClientCredentials, tokens: OAuthTokens?) {
+        self.credentials = credentials
+        self.tokens = tokens
+    }
+}
+
 /// Errors that can occur during Keychain operations.
 public enum KeychainError: Error, Equatable, Sendable {
     /// An item was not found in the Keychain.
@@ -73,6 +84,7 @@ public actor KeychainManager {
     private enum Account: String {
         case clientCredentials = "client_credentials"
         case tokens = "oauth_tokens"
+        case combined = "oauth_data"
     }
 
     /// Creates a new KeychainManager with the specified service identifier.
@@ -129,6 +141,35 @@ public actor KeychainManager {
         Logger.auth.debug("Deleted OAuth tokens from Keychain")
     }
 
+    // MARK: - Combined Data (Single Keychain Access)
+
+    /// Saves combined OAuth data to reduce Keychain access prompts.
+    /// - Parameter data: The combined credentials and tokens to save.
+    /// - Throws: `KeychainError` if the operation fails.
+    public func saveOAuthData(_ data: OAuthData) throws {
+        try self.save(data, account: .combined)
+        Logger.auth.debug("Saved combined OAuth data to Keychain")
+    }
+
+    /// Loads combined OAuth data with a single Keychain access.
+    /// Falls back to loading separate items for backwards compatibility.
+    /// - Returns: The stored data, or `nil` if not found.
+    /// - Throws: `KeychainError` if the operation fails.
+    public func loadOAuthData() throws -> OAuthData? {
+        // Try loading combined data first
+        if let combined: OAuthData = try self.load(account: .combined) {
+            return combined
+        }
+
+        // Fall back to legacy separate items for backwards compatibility
+        guard let credentials: OAuthClientCredentials = try self.load(account: .clientCredentials) else {
+            return nil
+        }
+
+        let tokens: OAuthTokens? = try self.load(account: .tokens)
+        return OAuthData(credentials: credentials, tokens: tokens)
+    }
+
     // MARK: - Bulk Operations
 
     /// Deletes all authentication data from the Keychain.
@@ -140,18 +181,13 @@ public actor KeychainManager {
     public func deleteAll() throws {
         var deletedAny = false
 
-        do {
-            try self.delete(account: .clientCredentials)
-            deletedAny = true
-        } catch KeychainError.itemNotFound {
-            // Item not found is acceptable during bulk delete
-        }
-
-        do {
-            try self.delete(account: .tokens)
-            deletedAny = true
-        } catch KeychainError.itemNotFound {
-            // Item not found is acceptable during bulk delete
+        for account in [Account.clientCredentials, .tokens, .combined] {
+            do {
+                try self.delete(account: account)
+                deletedAny = true
+            } catch KeychainError.itemNotFound {
+                // Item not found is acceptable during bulk delete
+            }
         }
 
         if deletedAny {

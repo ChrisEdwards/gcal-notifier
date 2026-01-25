@@ -165,7 +165,7 @@ public actor AlertEngine {
     /// Creates an AlertEngine with the default dependencies.
     public init(alertsStore: ScheduledAlertsStore) async {
         self.alertsStore = alertsStore
-        self.scheduler = await DispatchAlertScheduler()
+        self.scheduler = DispatchAlertScheduler()
         self.delivery = NoOpAlertDelivery()
         self.dateProvider = { Date() }
     }

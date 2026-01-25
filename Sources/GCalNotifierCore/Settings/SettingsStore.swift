@@ -57,20 +57,41 @@ public final class SettingsStore: @unchecked Sendable {
 
     /// Calendars to monitor. Empty array means all calendars.
     public var enabledCalendars: [String] {
-        get { self.loadStringArray(forKey: Keys.enabledCalendars) ?? [] }
-        set { self.saveStringArray(newValue, forKey: Keys.enabledCalendars) }
+        get {
+            access(keyPath: \.enabledCalendars)
+            return self.loadStringArray(forKey: Keys.enabledCalendars) ?? []
+        }
+        set {
+            withMutation(keyPath: \.enabledCalendars) {
+                self.saveStringArray(newValue, forKey: Keys.enabledCalendars)
+            }
+        }
     }
 
     /// Events containing these keywords won't trigger alerts.
     public var blockedKeywords: [String] {
-        get { self.loadStringArray(forKey: Keys.blockedKeywords) ?? [] }
-        set { self.saveStringArray(newValue, forKey: Keys.blockedKeywords) }
+        get {
+            access(keyPath: \.blockedKeywords)
+            return self.loadStringArray(forKey: Keys.blockedKeywords) ?? []
+        }
+        set {
+            withMutation(keyPath: \.blockedKeywords) {
+                self.saveStringArray(newValue, forKey: Keys.blockedKeywords)
+            }
+        }
     }
 
     /// Events containing these keywords will alert even without video links.
     public var forceAlertKeywords: [String] {
-        get { self.loadStringArray(forKey: Keys.forceAlertKeywords) ?? ["Interview", "IMPORTANT"] }
-        set { self.saveStringArray(newValue, forKey: Keys.forceAlertKeywords) }
+        get {
+            access(keyPath: \.forceAlertKeywords)
+            return self.loadStringArray(forKey: Keys.forceAlertKeywords) ?? ["Interview", "IMPORTANT"]
+        }
+        set {
+            withMutation(keyPath: \.forceAlertKeywords) {
+                self.saveStringArray(newValue, forKey: Keys.forceAlertKeywords)
+            }
+        }
     }
 
     // MARK: - Startup

@@ -63,44 +63,34 @@ public actor GoogleOAuthProvider: OAuthProvider {
     // MARK: - OAuthProvider
 
     public func configure(clientId: String, clientSecret: String) async throws {
-        guard !clientId.isEmpty, !clientSecret.isEmpty else {
-            throw OAuthError.invalidCredentials
-        }
+        guard !clientId.isEmpty, !clientSecret.isEmpty else { throw OAuthError.invalidCredentials }
 
         let credentials = OAuthClientCredentials(clientId: clientId, clientSecret: clientSecret)
-
         do {
-            try await self.keychainManager.saveClientCredentials(credentials)
+            try await self.keychainManager.saveOAuthData(OAuthData(credentials: credentials, tokens: nil))
         } catch let error as KeychainError {
             throw OAuthError.keychainError(error)
         }
-
         self.clientCredentials = credentials
         self.state = .configured
-        Logger.auth.info("OAuth credentials configured")
     }
 
     public func authenticate() async throws {
         guard self.state != .unconfigured, let credentials = clientCredentials else {
             throw OAuthError.notConfigured
         }
-
         self.state = .authenticating
-        Logger.auth.info("Starting OAuth authentication flow")
 
         do {
             let newTokens = try await self.performAuthenticationFlow(credentials: credentials)
-            try await self.keychainManager.saveTokens(newTokens)
+            try await self.keychainManager.saveOAuthData(OAuthData(credentials: credentials, tokens: newTokens))
             self.tokens = newTokens
             self.state = .authenticated
-            Logger.auth.info("OAuth authentication successful")
         } catch let error as OAuthError {
             self.state = .configured
-            Logger.auth.error("OAuth authentication failed: \(error)")
             throw error
         } catch {
             self.state = .configured
-            Logger.auth.error("OAuth authentication failed: \(error.localizedDescription)")
             throw OAuthError.authenticationFailed(error.localizedDescription)
         }
     }
@@ -148,24 +138,22 @@ public actor GoogleOAuthProvider: OAuthProvider {
     // MARK: - Credential Loading
 
     /// Loads stored credentials and tokens from Keychain, updating state accordingly.
+    /// Uses combined storage to minimize password prompts (single Keychain access).
     public func loadStoredCredentials() async throws {
-        guard let credentials = try await keychainManager.loadClientCredentials() else {
+        if self.clientCredentials != nil { return } // Already loaded
+
+        guard let data = try await keychainManager.loadOAuthData() else {
             self.state = .unconfigured
-            Logger.auth.debug("No stored credentials found")
             return
         }
+        self.clientCredentials = data.credentials
 
-        self.clientCredentials = credentials
-
-        guard let storedTokens = try await keychainManager.loadTokens() else {
+        guard let storedTokens = data.tokens else {
             self.state = .configured
-            Logger.auth.debug("Credentials found but no tokens")
             return
         }
-
         self.tokens = storedTokens
         self.state = storedTokens.isExpired ? .expired : .authenticated
-        Logger.auth.debug("Loaded tokens, expired: \(storedTokens.isExpired)")
     }
 
     // MARK: - Private Methods
@@ -255,9 +243,7 @@ public actor GoogleOAuthProvider: OAuthProvider {
     }
 
     private func refreshTokens(_ currentTokens: OAuthTokens) async throws -> OAuthTokens {
-        guard let credentials = clientCredentials else {
-            throw OAuthError.notConfigured
-        }
+        guard let credentials = clientCredentials else { throw OAuthError.notConfigured }
 
         let bodyParams = [
             "refresh_token": currentTokens.refreshToken,
@@ -267,17 +253,13 @@ public actor GoogleOAuthProvider: OAuthProvider {
         ]
 
         let tokenResponse = try await self.executeTokenRequest(bodyParams: bodyParams, isRefresh: true)
-        let expiresAt = Date().addingTimeInterval(TimeInterval(tokenResponse.expiresIn))
-
         let newTokens = OAuthTokens(
             accessToken: tokenResponse.accessToken,
             refreshToken: tokenResponse.refreshToken ?? currentTokens.refreshToken,
-            expiresAt: expiresAt
+            expiresAt: Date().addingTimeInterval(TimeInterval(tokenResponse.expiresIn))
         )
 
-        try await self.keychainManager.saveTokens(newTokens)
-        Logger.auth.debug("Token refreshed successfully, expires in \(tokenResponse.expiresIn)s")
-
+        try await self.keychainManager.saveOAuthData(OAuthData(credentials: credentials, tokens: newTokens))
         return newTokens
     }
 
