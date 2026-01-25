@@ -2,7 +2,7 @@
 
 A macOS menu bar app that delivers **unmissable** Google Calendar meeting reminders. No more missing meetings because notifications blend into Slack noise.
 
-## The Problem
+## Why GCal Notifier?
 
 Google Calendar's built-in notifications are easily missed:
 - They look identical to hundreds of daily Slack messages
@@ -10,57 +10,93 @@ Google Calendar's built-in notifications are easily missed:
 - They don't scale urgency as meeting time approaches
 - They fail silently when offline
 
-## The Solution
+**GCal Notifier fixes all of this** with aggressive, two-stage alerts that demand your attention when it matters.
 
-GCal Notifier provides aggressive, two-stage alerts with custom sounds, modal windows, and smart context awareness:
+## How It Works
 
 ```
-📅 32m → Meeting countdown in menu bar
-🔔 10 min  → Stage 1: Gentle heads-up notification
-⚠️  2 min  → Stage 2: Modal window + urgent sound (demands attention)
+Menu Bar:     📅 32m     ← Live countdown to your next meeting
+
+10 min before:  🔔 Gentle notification appears
+                   "Team Standup in 10 minutes"
+
+ 2 min before:  ⚠️ Modal window + urgent sound
+                   Can't miss it — requires action to dismiss
 ```
+
+## Quick Start
+
+1. **Download** from [Releases](https://github.com/ChrisEdwards/gcal-notifier/releases)
+2. **Create OAuth credentials** at [Google Cloud Console](https://console.cloud.google.com/) (free)
+3. **Launch the app** — click 📅 in menu bar → Settings
+4. **Paste credentials** and sign in with Google
+5. **Done!** You'll never miss a meeting again
 
 ## Features
 
-### Core
-- **Adaptive Menu Bar** — Live countdown to your next meeting
-- **Two-Stage Alerts** — Early warning + urgent reminder with configurable timing
-- **Custom Sounds** — Different sounds per stage, or use your own audio files
-- **Meeting Link Detection** — Extracts Join URLs from Meet, Zoom, Teams, Webex, Slack Huddles
-- **One-Click Join** — Open video call directly from alert modal
-- **Global Keyboard Shortcuts** — `⌘⇧J` to join next meeting instantly
+### Menu Bar
+- **Live Countdown** — Shows time until your next meeting (e.g., "32m", "2h 15m")
+- **Today's Meetings** — Click to see your full schedule at a glance
+- **Visual Indicators**:
+  - 📹 Meeting has video link (click to see Join option)
+  - 📅 Meeting without video link
+  - ⚠️ Conflicting meetings at same time
+- **Quick Actions** — Join, copy link, or open in Google Calendar
+
+### Two-Stage Alerts
+
+| Stage | Default | What Happens |
+|-------|---------|--------------|
+| **Stage 1** | 10 min before | Notification banner + sound |
+| **Stage 2** | 2 min before | Modal window + urgent sound (can't ignore!) |
+
+Both timing and sounds are fully customizable.
+
+### Alert Window
+When the urgent alert fires, you get:
+- **Join** — One click to open video call (Return key)
+- **Snooze** — Push back 1, 3, or 5 minutes
+- **Open in Calendar** — View full event details
+- **Dismiss** — Close and acknowledge (Escape key)
+
+### Smart Features
+- **Snooze with Memory** — Snoozed alerts show "Snoozed 2 time(s)" so you know
+- **Automatic Sync** — Polls more frequently as meetings approach (1min/5min/15min)
+- **Offline Mode** — Cached events keep alerts working without internet
+- **Sleep Recovery** — Reschedules alerts after your Mac wakes up
+
+### Meeting Link Detection
+Automatically extracts join URLs from:
+- Google Meet
+- Zoom
+- Microsoft Teams
+- Webex
+- Slack Huddles
+- Any URL in the event description
 
 ### Smart Filtering
-- **Calendar Selection** — Enable/disable specific calendars
-- **Keyword Blocking** — Skip alerts for events matching keywords (e.g., "OOO", "Block")
-- **Force-Alert Keywords** — Always alert for critical events (e.g., "Interview")
-- **All-Day Event Exclusion** — No alerts for holidays or day-long blocks
+- **Calendar Selection** — Choose which calendars to monitor
+- **Keyword Blocking** — Skip alerts for events containing "OOO", "Block", etc.
+- **Force-Alert Keywords** — Always alert for "Interview", "Important", etc.
+- **All-Day Events** — Automatically excluded (no alerts for holidays)
 
 ### Context Awareness
-- **Screen Share Detection** — Suppresses modals during screen sharing
-- **Do Not Disturb Respect** — Optional sound suppression during Focus modes
-- **Back-to-Back Handling** — Intelligent alert downgrading for consecutive meetings
-- **Conflict Detection** — Warns about overlapping meetings
-- **Sleep/Wake Recovery** — Reschedules alerts after laptop wake
+- **Screen Share Detection** — Suppresses modal popups during presentations
+- **Do Not Disturb** — Optional sound suppression during Focus modes
+- **Back-to-Back Meetings** — Intelligent alert handling for consecutive events
+- **Conflict Warnings** — Alerts you about overlapping meetings
 
-### Reliability
-- **Offline Resilience** — Cached events keep alerts working without network
-- **Proactive Token Refresh** — OAuth tokens refresh before expiration
-- **Adaptive Sync** — Polls more frequently as meetings approach
-- **Launch at Login** — Start automatically with macOS
-
-## Requirements
-
-- macOS 15.0+ (Sequoia)
-- Google Account with Calendar access
-- Google Cloud OAuth credentials (free, see setup below)
+### Keyboard Shortcuts
+- **⌘⇧J** — Join next meeting instantly (customizable)
+- **Return** — Join from alert window
+- **Escape** — Dismiss alert window
 
 ## Installation
 
-### Download Release
+### Option 1: Download Release
 Download the latest `.app` from [Releases](https://github.com/ChrisEdwards/gcal-notifier/releases) and drag to Applications.
 
-### Build from Source
+### Option 2: Build from Source
 ```bash
 git clone https://github.com/ChrisEdwards/gcal-notifier.git
 cd gcal-notifier
@@ -68,96 +104,98 @@ make package RELEASE=1
 # App bundle created in .build/
 ```
 
-## Setup
+## Setup Guide
 
-### 1. Create Google Cloud Credentials
+### Step 1: Create Google Cloud Credentials (5 minutes)
 
-GCal Notifier requires your own OAuth credentials (free tier is sufficient):
+GCal Notifier needs OAuth credentials to access your calendar. This is free and gives you full control.
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (or select existing)
-3. Enable the **Google Calendar API**:
-   - Navigate to *APIs & Services* → *Library*
-   - Search "Google Calendar API" → Enable
-4. Create OAuth credentials:
+2. Create a new project (or use existing)
+3. **Enable the Google Calendar API**:
+   - Go to *APIs & Services* → *Library*
+   - Search "Google Calendar API"
+   - Click **Enable**
+4. **Create OAuth credentials**:
    - Go to *APIs & Services* → *Credentials*
    - Click *Create Credentials* → *OAuth client ID*
+   - If prompted, configure the OAuth consent screen first:
+     - User Type: External
+     - App name: "GCal Notifier"
+     - Add your email as a test user
    - Application type: **Desktop app**
-   - Name: "GCal Notifier" (or anything)
-5. Copy the **Client ID** and **Client Secret**
+   - Name: "GCal Notifier"
+5. **Copy** the Client ID and Client Secret
 
-### 2. Configure the App
+### Step 2: Configure the App
 
-1. Launch GCal Notifier — it appears in your menu bar as 📅
-2. Click the icon → *Settings* → *Account* tab
-3. Paste your Client ID and Client Secret
-4. Click *Sign In* — browser opens for Google authorization
-5. Grant read-only calendar access
-6. Select which calendars to monitor in *Calendars* tab
+1. Launch GCal Notifier — look for 📅 in your menu bar
+2. Click the icon → **Settings**
+3. In the **Account** tab:
+   - Paste your Client ID
+   - Paste your Client Secret
+   - Click **Sign In**
+4. Browser opens — sign in with Google and grant calendar access
+5. In the **Calendars** tab, select which calendars to monitor
 
-### 3. Customize Alerts (Optional)
+### Step 3: Customize (Optional)
 
-In *Settings* → *Alerts* tab:
-- **Stage 1 timing** — Minutes before meeting for first alert (default: 10)
-- **Stage 2 timing** — Minutes before for urgent modal (default: 2)
-- **Sounds** — Choose from built-in sounds or add custom audio files
-- **Snooze duration** — How long snooze delays the alert
+**Alerts Tab:**
+- Adjust Stage 1 and Stage 2 timing
+- Choose different sounds for each stage
+- Add a custom sound file if you want
 
-## Usage
+**Filters Tab:**
+- Add keywords to block (events won't trigger alerts)
+- Add force-alert keywords (always trigger alerts)
 
-### Menu Bar
-- **Click icon** — Shows upcoming meetings and quick actions
-- **Right-click** — Access settings and sign out
+**General Tab:**
+- Enable "Launch at Login" for automatic startup
 
-### Alert Modal
-When an urgent alert fires:
-- **Join** — Opens meeting link in default browser
-- **Snooze** — Delays alert by configured duration
-- **Open in Calendar** — Opens event in Google Calendar web
-- **Dismiss** — Closes alert without action
+## Privacy & Security
 
-### Keyboard Shortcuts
-- `⌘⇧J` — Join next meeting immediately (configurable in Settings)
+- **Read-Only** — Only requests `calendar.readonly` permission
+- **Secure Storage** — OAuth tokens stored in macOS Keychain
+- **No Tracking** — Zero analytics or telemetry
+- **Your Credentials** — You control the OAuth app; revoke anytime in Google settings
+- **Sandboxed** — Minimal app permissions (network + keychain only)
 
-## Architecture
+## Troubleshooting
 
+### Alerts not firing
+1. **Check notification permissions**: System Settings → Notifications → GCal Notifier
+2. **Verify calendar is enabled**: Settings → Calendars tab
+3. **Check blocked keywords**: Settings → Filters tab
+4. **Force sync**: Click menu bar icon → Refresh Now
+
+### "Calendar sync failed"
+1. Check your internet connection
+2. Try signing out and back in (Settings → Account)
+3. Verify your OAuth credentials are correct
+
+### Menu bar shows "--" instead of countdown
+1. No upcoming meetings with video links today
+2. Try clicking Refresh Now in the menu
+3. Check that you have calendars selected in Settings
+
+### No meeting link detected for an event
+GCal Notifier checks these locations:
+- Google Meet conference data
+- Event location field
+- Event description (any URL)
+
+**Workaround**: Add the meeting URL directly to the event description.
+
+### App not starting at login
+1. Enable: Settings → General → Launch at Login
+2. Check: System Settings → General → Login Items
+
+### Keychain password prompts (developers)
+If building from source and getting repeated Keychain prompts:
+```bash
+./Scripts/setup_dev_certificate.sh
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     GCalNotifier (App)                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
-│  │  Menu Bar    │  │ Alert Window │  │   Settings UI    │   │
-│  │  Controller  │  │  Controller  │  │   (SwiftUI)      │   │
-│  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘   │
-└─────────┼─────────────────┼────────────────────┼────────────┘
-          │                 │                    │
-┌─────────┼─────────────────┼────────────────────┼────────────┐
-│         ▼                 ▼                    ▼             │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │                  GCalNotifierCore                     │   │
-│  │  ┌────────────┐  ┌─────────────┐  ┌───────────────┐  │   │
-│  │  │ SyncEngine │  │ AlertEngine │  │ SettingsStore │  │   │
-│  │  │ (adaptive) │  │   (actor)   │  │ (@Observable) │  │   │
-│  │  └─────┬──────┘  └──────┬──────┘  └───────────────┘  │   │
-│  │        │                │                             │   │
-│  │        ▼                ▼                             │   │
-│  │  ┌────────────┐  ┌─────────────┐  ┌───────────────┐  │   │
-│  │  │  Calendar  │  │Notification │  │   EventCache  │  │   │
-│  │  │   Client   │  │  Scheduler  │  │   (offline)   │  │   │
-│  │  └─────┬──────┘  └─────────────┘  └───────────────┘  │   │
-│  │        │                                              │   │
-│  │        ▼                                              │   │
-│  │  ┌────────────┐  ┌─────────────┐                     │   │
-│  │  │   OAuth    │  │  Keychain   │                     │   │
-│  │  │  Provider  │◀─│   Manager   │                     │   │
-│  │  └────────────┘  └─────────────┘                     │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                   GCalNotifierCore (Testable)                │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Two-Target Design:**
-- **GCalNotifierCore** — Business logic, testable without UI dependencies
-- **GCalNotifier** — SwiftUI app with system integration
+This creates a self-signed certificate that persists across rebuilds.
 
 ## Development
 
@@ -168,15 +206,15 @@ When an urgent alert fires:
 ### Build Commands
 ```bash
 make build          # Debug build
-make build-release  # Optimized release build
 make start          # Build and run
 make stop           # Kill running instance
+make build-release  # Optimized release build
+make package        # Create .app bundle
 ```
 
 ### Testing
 ```bash
 make test           # Run all tests
-make test-parallel  # Parallel test execution
 make check          # Lint + static analysis
 make check-test     # Both checks and tests
 ```
@@ -192,48 +230,30 @@ make all            # Format, lint, test
 ```
 Sources/
 ├── GCalNotifierCore/     # Testable business logic
-│   ├── Auth/             # OAuth 2.0 implementation
+│   ├── Auth/             # OAuth 2.0 + Keychain
 │   ├── Calendar/         # API client, sync, filtering
 │   ├── Alerts/           # Alert scheduling engine
 │   ├── Settings/         # Preferences storage
 │   └── Data/             # Caching and persistence
 │
 └── GCalNotifier/         # macOS app
-    ├── System/           # AppDelegate, lifecycle
-    ├── MenuBar/          # Status item UI
+    ├── MenuBar/          # Status item + dropdown menu
     ├── Alerts/           # Modal windows, sounds
     ├── Settings/         # Settings UI (SwiftUI)
     └── Shortcuts/        # Global hotkeys
 ```
 
-## Privacy & Security
+### Architecture
 
-- **Read-Only Access** — Only requests `calendar.readonly` OAuth scope
-- **Local Credentials** — OAuth tokens stored in macOS Keychain, never on disk
-- **No Telemetry** — Zero analytics, tracking, or network calls except Google Calendar API
-- **App Sandbox** — Runs with minimal entitlements (network + keychain only)
-- **Your Credentials** — You control the OAuth app; revoke access anytime in Google settings
+**Two-Target Design:**
+- **GCalNotifierCore** — Business logic, fully testable without UI
+- **GCalNotifier** — SwiftUI app with system integration
 
-## Troubleshooting
-
-### "Calendar sync failed"
-- Check internet connection
-- Verify OAuth credentials in Settings → Account
-- Try signing out and back in
-
-### Alerts not firing
-- Ensure notifications are enabled in System Settings → Notifications
-- Check that the calendar is enabled in Settings → Calendars
-- Verify the event isn't matching a blocked keyword
-
-### No meeting link detected
-- GCal Notifier checks: Google Meet data, hangoutLink, location field, description
-- Some calendar apps store links in non-standard fields
-- Manually add the link to the event description as a workaround
-
-### App not starting at login
-- Enable in Settings → General → "Launch at Login"
-- Check System Settings → General → Login Items
+Key components:
+- `SyncEngine` — Adaptive polling (1/5/15 min based on next meeting)
+- `AlertEngine` — Schedules and fires alerts with suppression logic
+- `EventCache` — Offline-capable event storage
+- `KeychainManager` — Secure credential storage
 
 ## Contributing
 
@@ -241,14 +261,14 @@ Contributions welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch
-3. Run `make all` before committing (format, lint, test)
+3. Run `make all` before committing
 4. Submit a pull request
 
 ### Code Standards
 - Swift 6 strict concurrency
 - Max 150 character lines
-- Max 20 cyclomatic complexity per function
-- Max 100 lines per function body
+- Max 20 cyclomatic complexity
+- Max 100 lines per function
 
 ## License
 
