@@ -132,13 +132,16 @@ extension AlertContentView {
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.return, modifiers: [])
             .disabled(self.event.primaryMeetingURL == nil)
+            .pointerCursor()
 
             self.snoozeMenu
+                .pointerCursor()
 
             Button("Open in Cal") {
                 self.onOpenCalendar()
             }
             .buttonStyle(.bordered)
+            .pointerCursor()
 
             Spacer()
 
@@ -147,6 +150,7 @@ extension AlertContentView {
             }
             .buttonStyle(.borderless)
             .keyboardShortcut(.escape, modifiers: [])
+            .pointerCursor()
         }
     }
 

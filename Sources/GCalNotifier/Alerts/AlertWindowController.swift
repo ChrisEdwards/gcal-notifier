@@ -3,6 +3,18 @@ import GCalNotifierCore
 import OSLog
 import SwiftUI
 
+// MARK: - Custom Hosting View for First Mouse Support
+
+/// Custom NSHostingView that accepts first mouse events.
+/// This is required for non-activating panels to properly handle mouse events
+/// including cursor changes when hovering over buttons.
+private class AlertHostingView<Content: View>: NSHostingView<Content> {
+    /// Accept first mouse so clicks and hover work without first activating the window.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+}
+
 // MARK: - Alert Window Actions
 
 /// Actions that can be triggered from the alert window.
@@ -256,7 +268,7 @@ public extension AlertWindowController {
             actions: actions
         )
 
-        let hostingView = NSHostingView(rootView: contentView)
+        let hostingView = AlertHostingView(rootView: contentView)
         window?.contentView = hostingView
 
         // Size to fit content
@@ -304,7 +316,7 @@ public extension AlertWindowController {
             actions: actions
         )
 
-        let hostingView = NSHostingView(rootView: contentView)
+        let hostingView = AlertHostingView(rootView: contentView)
         window?.contentView = hostingView
 
         // Size to fit content
