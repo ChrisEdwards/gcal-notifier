@@ -182,6 +182,10 @@ public final class StatusItemController: NSObject {
 
     // MARK: - Delegates
 
+    /// Called asynchronously before building the menu, for loading data.
+    public var onMenuWillPrepare: (() async -> Void)?
+
+    /// Called synchronously to build and return the menu.
     public var onMenuWillOpen: (() -> NSMenu)?
 
     // MARK: - Initialization
@@ -381,10 +385,16 @@ extension StatusItemController {
 
 extension StatusItemController {
     @objc private func statusItemClicked() {
-        guard let menu = onMenuWillOpen?() else { return }
-        self.menu = menu
-        self.statusItem.menu = menu
-        self.statusItem.button?.performClick(nil)
-        self.statusItem.menu = nil // Allow click handler for next click
+        Task {
+            // Allow async preparation (e.g., loading events from cache)
+            await self.onMenuWillPrepare?()
+
+            // Build and show the menu
+            guard let menu = self.onMenuWillOpen?() else { return }
+            self.menu = menu
+            self.statusItem.menu = menu
+            self.statusItem.button?.performClick(nil)
+            self.statusItem.menu = nil // Allow click handler for next click
+        }
     }
 }

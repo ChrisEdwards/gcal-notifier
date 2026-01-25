@@ -149,10 +149,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuController.onQuit = {
             NSApp.terminate(nil)
         }
+
+        // Configure with EventCache if available
+        if let eventCache {
+            menuController.configure(eventCache: eventCache)
+        }
+
         self.menuController = menuController
 
         // Create status item controller
         let statusItemController = StatusItemController()
+        statusItemController.onMenuWillPrepare = { [weak menuController] in
+            await menuController?.loadEventsFromCache()
+        }
         statusItemController.onMenuWillOpen = { [weak menuController] in
             menuController?.buildMenu() ?? NSMenu()
         }

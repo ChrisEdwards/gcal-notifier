@@ -8,6 +8,10 @@ import GCalNotifierCore
 /// Handles the actual AppKit menu creation, keeping UI code separate from logic.
 @MainActor
 public final class MenuController: NSObject {
+    // MARK: - Dependencies
+
+    private var eventCache: EventCache?
+
     // MARK: - State
 
     private var events: [CalendarEvent] = []
@@ -25,7 +29,33 @@ public final class MenuController: NSObject {
     public var onQuit: (() -> Void)?
     public var onOpenNotificationSettings: (() -> Void)?
 
+    // MARK: - Configuration
+
+    /// Configures the menu controller with its dependencies.
+    /// - Parameter eventCache: The event cache to load events from.
+    public func configure(eventCache: EventCache) {
+        self.eventCache = eventCache
+    }
+
     // MARK: - Public API
+
+    /// Loads today's events from the event cache.
+    /// Call this before building the menu to ensure fresh data.
+    public func loadEventsFromCache() async {
+        guard let eventCache else { return }
+
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else { return }
+
+        do {
+            let todaysEvents = try await eventCache.events(from: startOfDay, to: endOfDay)
+            self.events = todaysEvents
+        } catch {
+            // Log error but continue with existing events
+            // Menu will show whatever state it had before
+        }
+    }
 
     /// Updates the events to display.
     public func updateEvents(_ events: [CalendarEvent]) {
