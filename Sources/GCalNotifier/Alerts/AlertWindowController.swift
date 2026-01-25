@@ -276,6 +276,9 @@ public extension AlertWindowController {
             return
         }
 
+        // Activate app (required for menu bar apps to show windows)
+        NSApp.activate(ignoringOtherApps: true)
+
         // Show and bring to front
         self.positionWindow()
         showWindow(nil)
@@ -321,6 +324,9 @@ public extension AlertWindowController {
             Logger.alerts.debug("Skipping window display in test environment")
             return
         }
+
+        // Activate app (required for menu bar apps to show windows)
+        NSApp.activate(ignoringOtherApps: true)
 
         // Show and bring to front
         self.positionWindow()
