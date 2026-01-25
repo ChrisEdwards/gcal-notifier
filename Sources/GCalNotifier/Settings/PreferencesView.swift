@@ -4,11 +4,11 @@ import SwiftUI
 /// Main preferences window with tabbed interface for all application settings.
 struct PreferencesView: View {
     @State private var settings: SettingsStore
-    private let eventCache: EventCache?
+    private let onForceSync: (() async -> ForceSyncResult)?
 
-    init(settings: SettingsStore = SettingsStore(), eventCache: EventCache? = nil) {
+    init(settings: SettingsStore = SettingsStore(), onForceSync: (() async -> ForceSyncResult)? = nil) {
         self._settings = State(initialValue: settings)
-        self.eventCache = eventCache
+        self.onForceSync = onForceSync
     }
 
     var body: some View {
@@ -28,7 +28,7 @@ struct PreferencesView: View {
             ShortcutsTab(settings: self.settings)
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
 
-            AccountTab(eventCache: self.eventCache)
+            AccountTab(onForceSync: self.onForceSync)
                 .tabItem { Label("Account", systemImage: "person.circle") }
         }
         .frame(width: 500, height: 400)
@@ -74,7 +74,7 @@ struct GeneralTab: View {
                 Text("Approval required").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Open Settings") { LaunchAtLoginManager.shared.openLoginItemsSettings() }
-                    .buttonStyle(.link).font(.caption)
+                    .buttonStyle(.link).font(.caption).pointerCursor()
             }
         } else if case let .error(msg) = self.launchAtLoginStatus {
             Label(msg, systemImage: "exclamationmark.triangle.fill")
@@ -219,6 +219,7 @@ struct SoundsTab: View {
                     self.selectCustomSound()
                 }
                 .controlSize(.small)
+                .pointerCursor()
             }
         }
     }
@@ -359,6 +360,7 @@ struct CalendarsTab: View {
                         self.addCalendar()
                     }
                     .disabled(self.newCalendarId.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .pointerCursor()
                 }
 
                 Text("Enter the calendar ID (email address) to monitor")
@@ -463,6 +465,7 @@ struct FilteringTab: View {
                 self.addKeyword(to: keywords, from: newKeyword)
             }
             .disabled(newKeyword.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty)
+            .pointerCursor()
         }
     }
 

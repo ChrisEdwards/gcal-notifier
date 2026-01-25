@@ -1,47 +1,97 @@
-#!/bin/bash
-# Setup local development certificate for code signing
+#!/usr/bin/env bash
+# Creates a self-signed code signing certificate for GCalNotifier development builds.
+# This allows Keychain access to persist across rebuilds (no more password prompts!).
+#
 # Usage: ./Scripts/setup_dev_certificate.sh
 #
-# This script helps create a self-signed certificate for local development.
-# For distribution, you'll need a proper Apple Developer ID certificate.
+# The certificate is stored in your login keychain and marked as trusted for code signing.
+# You only need to run this once per machine.
 
-set -e
+set -euo pipefail
 
-CERT_NAME="GCalNotifier Development"
+CERT_NAME="GCalNotifier Dev"
+KEYCHAIN="login.keychain-db"
 
-echo "=== Development Certificate Setup ==="
-echo ""
-echo "This script will help set up code signing for local development."
-echo ""
-
-# Check for existing certificates
-echo "Checking for existing codesigning certificates..."
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CERT_NAME"; then
-    echo "Development certificate '$CERT_NAME' already exists."
-    echo ""
-    security find-identity -v -p codesigning | grep "$CERT_NAME"
+# Check if certificate already exists
+if security find-identity -v -p codesigning | grep -q "${CERT_NAME}"; then
+    echo "✓ Certificate '${CERT_NAME}' already exists"
+    security find-identity -v -p codesigning | grep "${CERT_NAME}"
     exit 0
 fi
 
+echo "Creating self-signed code signing certificate: ${CERT_NAME}"
+echo "You may be prompted for your keychain password."
 echo ""
-echo "No development certificate found."
+
+# Create a temporary directory for certificate files
+TEMP_DIR=$(mktemp -d)
+trap "rm -rf ${TEMP_DIR}" EXIT
+
+# Generate certificate signing request config
+cat > "${TEMP_DIR}/cert.conf" << EOF
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+CN = ${CERT_NAME}
+O = GCalNotifier Development
+OU = Development
+
+[v3_req]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = codeSigning
+basicConstraints = critical, CA:FALSE
+EOF
+
+# Generate private key and self-signed certificate
+openssl req -x509 -newkey rsa:2048 \
+    -keyout "${TEMP_DIR}/key.pem" \
+    -out "${TEMP_DIR}/cert.pem" \
+    -days 3650 \
+    -nodes \
+    -config "${TEMP_DIR}/cert.conf" \
+    2>/dev/null
+
+# Convert to PKCS12 format for import (with a temporary password, required by macOS)
+TEMP_PASS="temp$$"
+openssl pkcs12 -export \
+    -out "${TEMP_DIR}/cert.p12" \
+    -inkey "${TEMP_DIR}/key.pem" \
+    -in "${TEMP_DIR}/cert.pem" \
+    -passout "pass:${TEMP_PASS}" \
+    2>/dev/null
+
+# Import into keychain
+echo "Importing certificate into keychain..."
+security import "${TEMP_DIR}/cert.p12" \
+    -k "${KEYCHAIN}" \
+    -T /usr/bin/codesign \
+    -P "${TEMP_PASS}" \
+    -A
+
+# Allow codesign to access the key without prompting
+# This requires your keychain password once during setup
 echo ""
-echo "Options:"
+echo "Configuring keychain access (enter your login keychain password when prompted)..."
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "${KEYCHAIN}" 2>/dev/null || \
+    echo "Note: You may need to enter your keychain password to allow codesign access."
+
+# Trust the certificate for code signing
+echo "Setting certificate trust for code signing..."
+security add-trusted-cert -d -r trustRoot -k "${KEYCHAIN}" "${TEMP_DIR}/cert.pem" 2>/dev/null || true
+
+# Verify the certificate is available
 echo ""
-echo "1. Ad-hoc signing (simplest, for local testing only):"
-echo "   codesign --force --sign - GCalNotifier.app"
-echo ""
-echo "2. Create a self-signed certificate via Keychain Access:"
-echo "   a. Open Keychain Access"
-echo "   b. Keychain Access > Certificate Assistant > Create a Certificate"
-echo "   c. Name: $CERT_NAME"
-echo "   d. Identity Type: Self Signed Root"
-echo "   e. Certificate Type: Code Signing"
-echo "   f. Check 'Let me override defaults'"
-echo "   g. Continue through wizard with defaults"
-echo ""
-echo "3. Use an Apple Developer ID (for distribution):"
-echo "   Sign up at https://developer.apple.com"
-echo "   Download your Developer ID certificate"
-echo ""
-echo "For most local development, option 1 (ad-hoc) is sufficient."
+if security find-identity -v -p codesigning | grep -q "${CERT_NAME}"; then
+    echo "✓ Certificate '${CERT_NAME}' created successfully!"
+    echo ""
+    security find-identity -v -p codesigning | grep "${CERT_NAME}"
+    echo ""
+    echo "Debug builds will now use this certificate for signing."
+    echo "Keychain access will persist across rebuilds - no more password prompts!"
+else
+    echo "⚠ Certificate created but may need manual trust approval."
+    echo "Open Keychain Access, find '${CERT_NAME}', and set it to 'Always Trust'."
+fi

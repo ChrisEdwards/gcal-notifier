@@ -80,6 +80,9 @@ public actor KeychainManager {
     /// The service identifier for Keychain items.
     private let service: String
 
+    /// The access group for Keychain items (enables persistence across rebuilds).
+    private let accessGroup: String?
+
     /// Keychain account names for different credential types.
     private enum Account: String {
         case clientCredentials = "client_credentials"
@@ -88,9 +91,12 @@ public actor KeychainManager {
     }
 
     /// Creates a new KeychainManager with the specified service identifier.
-    /// - Parameter service: The Keychain service identifier. Defaults to "com.gcal-notifier.auth".
-    public init(service: String = "com.gcal-notifier.auth") {
+    /// - Parameters:
+    ///   - service: The Keychain service identifier. Defaults to "com.gcal-notifier.auth".
+    ///   - accessGroup: Optional Keychain access group. When nil, uses default app access.
+    public init(service: String = "com.gcal-notifier.auth", accessGroup: String? = nil) {
         self.service = service
+        self.accessGroup = accessGroup
     }
 
     // MARK: - Client Credentials
@@ -197,6 +203,22 @@ public actor KeychainManager {
 
     // MARK: - Private Helpers
 
+    /// Builds the base query dictionary with common attributes.
+    private func baseQuery(account: Account) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: self.service,
+            kSecAttrAccount as String: account.rawValue,
+        ]
+
+        // Add access group if specified (enables persistence across rebuilds)
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
+
+        return query
+    }
+
     /// Saves a Codable value to the Keychain.
     private func save(_ value: some Codable, account: Account) throws {
         let data: Data
@@ -207,21 +229,12 @@ public actor KeychainManager {
         }
 
         // Delete existing item first to ensure clean overwrite
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: self.service,
-            kSecAttrAccount as String: account.rawValue,
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
+        SecItemDelete(baseQuery(account: account) as CFDictionary)
 
         // Add new item
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: self.service,
-            kSecAttrAccount as String: account.rawValue,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        ]
+        var addQuery = baseQuery(account: account)
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         guard status == errSecSuccess else {
@@ -232,13 +245,9 @@ public actor KeychainManager {
 
     /// Loads a Codable value from the Keychain.
     private func load<T: Codable>(account: Account) throws -> T? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: self.service,
-            kSecAttrAccount as String: account.rawValue,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = baseQuery(account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -263,13 +272,7 @@ public actor KeychainManager {
 
     /// Deletes an item from the Keychain.
     private func delete(account: Account) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: self.service,
-            kSecAttrAccount as String: account.rawValue,
-        ]
-
-        let status = SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             Logger.auth.error("Failed to delete from Keychain: \(status)")
             throw KeychainError.securityError(status)

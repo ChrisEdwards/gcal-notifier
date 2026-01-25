@@ -191,12 +191,14 @@ struct OAuthSetupView: View {
                 Task { await self.signOut() }
             }
             .disabled(self.isSigningIn)
+            .pointerCursor()
         } else {
             Button(self.authState == .authenticating ? "Signing In..." : "Sign In") {
                 Task { await self.signIn() }
             }
             .disabled(!self.canSignIn || self.isSigningIn)
             .buttonStyle(.borderedProminent)
+            .pointerCursor()
         }
     }
 
@@ -221,6 +223,7 @@ struct OAuthSetupView: View {
                 self.errorMessage = nil
             }
             .buttonStyle(.borderless)
+            .pointerCursor()
         }
     }
 
@@ -298,6 +301,20 @@ struct OAuthSetupView: View {
     }
 }
 
+/// Result returned from force sync operation.
+struct ForceSyncResult: Sendable {
+    let eventCount: Int
+    let error: String?
+
+    static func success(eventCount: Int) -> ForceSyncResult {
+        ForceSyncResult(eventCount: eventCount, error: nil)
+    }
+
+    static func failure(_ error: String) -> ForceSyncResult {
+        ForceSyncResult(eventCount: 0, error: error)
+    }
+}
+
 struct AccountTab: View {
     @State private var authState: AuthState = .unconfigured
     @State private var lastSyncTime: Date?
@@ -306,11 +323,14 @@ struct AccountTab: View {
     @State private var syncStatusMessage: String?
 
     private let oauthProvider: GoogleOAuthProvider
-    private let eventCache: EventCache?
+    private let onForceSync: (() async -> ForceSyncResult)?
 
-    init(oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider(), eventCache: EventCache? = nil) {
+    init(
+        oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider(),
+        onForceSync: (() async -> ForceSyncResult)? = nil
+    ) {
         self.oauthProvider = oauthProvider
-        self.eventCache = eventCache
+        self.onForceSync = onForceSync
     }
 
     var body: some View {
@@ -376,6 +396,7 @@ struct AccountTab: View {
         Button("Force Full Sync") {
             Task { await self.forceFullSync() }
         }
+        .buttonStyle(PointerButtonStyle())
         .disabled(self.isLoadingSync || !self.authState.canMakeApiCalls)
         .help("Clears all sync tokens and performs a fresh calendar sync")
     }
@@ -398,44 +419,24 @@ struct AccountTab: View {
     }
 
     private func forceFullSync() async {
+        guard let onForceSync else {
+            self.lastSyncError = "Sync not available"
+            return
+        }
+
         self.isLoadingSync = true
         self.syncStatusMessage = "Syncing..."
         self.lastSyncError = nil
         defer { self.isLoadingSync = false }
 
-        do {
-            let appState = try AppStateStore()
-            try await appState.clearAllSyncTokens()
+        let result = await onForceSync()
 
-            let httpClient = URLSessionHTTPClient()
-            let calendarClient = GoogleCalendarClient(httpClient: httpClient, tokenProvider: self.oauthProvider)
-
-            let now = Date()
-            let thirtyDaysFromNow = Calendar.current.date(byAdding: .day, value: 30, to: now) ?? now
-            let response = try await calendarClient.fetchEvents(
-                calendarId: "primary",
-                from: now,
-                to: thirtyDaysFromNow
-            )
-
-            // Persist events to cache if available
-            if let eventCache {
-                try await eventCache.merge(
-                    events: response.events,
-                    deletedEventIds: [],
-                    for: "primary",
-                    isFullSync: true
-                )
-            }
-
-            try await appState.setLastFullSync(Date())
-            self.lastSyncTime = Date()
-
-            let persistedStatus = self.eventCache != nil ? " and saved" : " (not saved - cache unavailable)"
-            self.syncStatusMessage = "Synced \(response.events.count) events\(persistedStatus)"
-        } catch {
-            self.lastSyncError = "Sync failed: \(error.localizedDescription)"
+        if let error = result.error {
+            self.lastSyncError = error
             self.syncStatusMessage = nil
+        } else {
+            self.lastSyncTime = Date()
+            self.syncStatusMessage = "Synced \(result.eventCount) events"
         }
     }
 }

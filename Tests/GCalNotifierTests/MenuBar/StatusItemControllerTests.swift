@@ -96,16 +96,18 @@ struct CountdownFormattingTests {
         #expect(result == "2h 15m")
     }
 
-    @Test("Format countdown handles 1 minute")
-    func formatCountdownOneMinute() {
+    @Test("Format countdown rounds up partial minutes")
+    func formatCountdownRoundsUp() {
+        // 65 seconds = 1m 5s → rounds up to 2m
         let result = StatusItemLogic.formatCountdown(secondsUntil: 65)
-        #expect(result == "1m")
+        #expect(result == "2m")
     }
 
-    @Test("Format countdown handles seconds under a minute")
+    @Test("Format countdown rounds up seconds under a minute")
     func formatCountdownUnderMinute() {
+        // 45 seconds → rounds up to 1m (not 0m)
         let result = StatusItemLogic.formatCountdown(secondsUntil: 45)
-        #expect(result == "0m")
+        #expect(result == "1m")
     }
 }
 

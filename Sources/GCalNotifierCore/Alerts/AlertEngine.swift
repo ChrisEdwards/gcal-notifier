@@ -417,7 +417,9 @@ public actor AlertEngine {
 
     private func handleAlertFired(alertId: String) async {
         guard let alert = alerts[alertId] else { return }
-        self.alerts.removeValue(forKey: alertId)
+        // Note: We intentionally do NOT remove the alert here.
+        // The alert must remain in the dictionary so snooze() can find it.
+        // Removal happens when user acknowledges via acknowledgeAlert().
 
         // Check suppression in order of priority:
         // 1. Presentation mode (screen share, DND) - highest priority

@@ -11,6 +11,9 @@ public final class WindowAlertDelivery: AlertDelivery {
     /// Alert engine - set after construction to break circular dependency
     private var alertEngine: AlertEngine?
 
+    /// Called when an alert is delivered - use to update UI like status bar
+    public var onAlertDelivered: (() -> Void)?
+
     public init(
         windowController: AlertWindowController,
         eventCache: EventCache,
@@ -63,6 +66,9 @@ public final class WindowAlertDelivery: AlertDelivery {
             // Play sound
             let soundName = alert.stage == .stage1 ? self.settings.stage1Sound : self.settings.stage2Sound
             SoundPlayer.shared.play(named: soundName, customPath: self.settings.customSoundPath)
+
+            // Notify that alert was delivered (for UI updates like status bar)
+            self.onAlertDelivered?()
         }
     }
 

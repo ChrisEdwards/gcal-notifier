@@ -211,12 +211,27 @@ public actor GoogleCalendarClient {
         guard let time else { return nil }
 
         if let dateTimeString = time.dateTime {
-            return ISO8601DateFormatter().date(from: dateTimeString)
+            // Google Calendar returns ISO8601 dates like:
+            // - 2024-01-25T15:00:00-08:00 (with timezone offset)
+            // - 2024-01-25T15:00:00Z (UTC)
+            // - 2024-01-25T15:00:00.000-08:00 (with fractional seconds)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+            // Try with fractional seconds first
+            if let date = formatter.date(from: dateTimeString) {
+                return date
+            }
+
+            // Fall back to without fractional seconds
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter.date(from: dateTimeString)
         }
 
         if let dateString = time.date {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd"
+            formatter.timeZone = TimeZone.current
             return formatter.date(from: dateString)
         }
 

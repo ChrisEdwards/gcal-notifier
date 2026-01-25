@@ -247,4 +247,49 @@ struct AlertEngineSnoozeTests {
         #expect(snoozedAlert?.snoozeCount == 1)
         #expect(snoozedAlert?.scheduledFireTime == baseTime.addingTimeInterval(60))
     }
+
+    @Test("Snooze works after alert fires - alert remains in dictionary during delivery")
+    func snoozeWorksAfterAlertFires() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let eventStart = baseTime.addingTimeInterval(600) // 10 min from now
+
+        let engine = AlertEngine(
+            alertsStore: store, scheduler: scheduler, delivery: delivery,
+            dateProvider: { baseTime }
+        )
+
+        let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage2)
+        let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 5)
+
+        await engine.scheduleAlerts(for: [event], settings: settings)
+
+        // Simulate alert firing (as if the timer went off)
+        await scheduler.fireAlert(alertId: alertId)
+
+        // Small delay to let async handler complete
+        try await Task.sleep(for: .milliseconds(50))
+
+        // Verify alert was delivered
+        let delivered = await delivery.deliveredAlerts
+        #expect(delivered.count == 1)
+        #expect(delivered.first?.id == alertId)
+
+        // Now try to snooze - this should work because the alert should still be in the dictionary
+        // (The bug was that the alert was removed before delivery, breaking snooze)
+        try await engine.snooze(alertId: alertId, duration: 60)
+
+        // Verify snooze worked
+        let alerts = await engine.scheduledAlerts
+        let snoozedAlert = alerts.first { $0.id == alertId }
+        #expect(snoozedAlert != nil, "Alert should still exist after snooze")
+        #expect(snoozedAlert?.snoozeCount == 1)
+    }
 }

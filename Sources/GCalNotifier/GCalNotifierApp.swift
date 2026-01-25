@@ -23,7 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu Bar
 
-    private var statusItemController: StatusItemController?
+    /// Status item controller (internal for extension access to update after sync)
+    var statusItemController: StatusItemController?
     private var menuController: MenuController?
 
     // MARK: - Core Services
@@ -31,14 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Local storage for calendar events - shared across components
     private var eventCache: EventCache?
 
-    /// Settings store - shared across components
-    private let settingsStore = SettingsStore()
+    /// Settings store - shared across components (internal for extension access)
+    let settingsStore = SettingsStore()
 
     /// Alert window controller for meeting alerts
     private var alertWindowController: AlertWindowController?
 
-    /// Alert engine for scheduling and firing alerts
-    private var alertEngine: AlertEngine?
+    /// Alert engine for scheduling and firing alerts (internal for extension access)
+    var alertEngine: AlertEngine?
 
     /// Alert delivery implementation
     private var alertDelivery: WindowAlertDelivery?
@@ -46,14 +47,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// OAuth provider for Google authentication
     private let oauthProvider = GoogleOAuthProvider()
 
-    /// App state store for sync tokens
-    private var appStateStore: AppStateStore?
+    /// App state store for sync tokens (internal for extension access)
+    var appStateStore: AppStateStore?
 
     /// Scheduled alerts persistence
     private var alertsStore: ScheduledAlertsStore?
 
-    /// Calendar sync engine - orchestrates sync operations
-    private var syncEngine: SyncEngine?
+    /// Calendar sync engine - orchestrates sync operations (internal for extension access)
+    var syncEngine: SyncEngine?
 
     // MARK: - Handlers
 
@@ -62,6 +63,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Task monitoring OAuth state for auto-starting sync
     private var authStateMonitorTask: Task<Void, Never>?
+
+    /// Task for automatic background sync polling (internal for extension access)
+    var syncPollingTask: Task<Void, Never>?
 
     /// Tracks last known auth state to detect transitions
     private var lastKnownAuthState: AuthState = .unconfigured
@@ -148,6 +152,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 eventCache: eventCache,
                 settings: self.settingsStore
             )
+
+            // Update status bar when an alert is delivered
+            delivery.onAlertDelivered = { [weak self] in
+                Task { @MainActor in
+                    self?.statusItemController?.updateDisplay()
+                }
+            }
+
             self.alertDelivery = delivery
 
             let engine = AlertEngine(
@@ -207,9 +219,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Called when authentication completes successfully - triggers initial sync.
+    /// Called when authentication completes successfully - triggers initial sync and starts polling.
     private func handleAuthenticationCompleted() async {
-        guard let syncEngine else {
+        guard syncEngine != nil else {
             Logger.app.warning("SyncEngine not available, cannot start sync after authentication")
             return
         }
@@ -217,31 +229,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Update menu to show we're no longer in setup mode
         self.menuController?.updateSetupRequired(false)
 
-        // Trigger initial sync
+        // Trigger initial sync and start automatic polling
         Logger.app.info("Triggering initial sync after authentication")
-        do {
-            let result = try await syncEngine.sync(calendarId: "primary")
-            Logger.app.info("Initial sync complete: \(result.events.count) events")
-
-            // Schedule alerts for synced events
-            await self.scheduleAlertsForEvents(result.events)
-        } catch {
-            Logger.app.error("Initial sync failed: \(error.localizedDescription)")
-        }
-    }
-
-    /// Schedules alerts for the given events using the AlertEngine.
-    private func scheduleAlertsForEvents(_ events: [CalendarEvent]) async {
-        guard let alertEngine else {
-            Logger.app.warning("AlertEngine not available, cannot schedule alerts")
-            return
-        }
-
-        Logger.app.info("Scheduling alerts for \(events.count) events")
-        await alertEngine.scheduleAlerts(for: events, settings: self.settingsStore)
-
-        let scheduledCount = await alertEngine.scheduledAlerts.count
-        Logger.app.info("AlertEngine now has \(scheduledCount) scheduled alerts")
+        await self.performSync()
     }
 
     private func setupShortcuts() {
@@ -267,6 +257,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menuController.onQuit = {
             NSApp.terminate(nil)
+        }
+        menuController.onRefresh = { [weak self] in
+            guard let self else { return }
+            Task { await self.performSync() }
         }
 
         // Configure with EventCache if available
@@ -300,6 +294,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Stop auth monitoring
         self.authStateMonitorTask?.cancel()
         self.authStateMonitorTask = nil
+
+        // Stop sync polling
+        self.syncPollingTask?.cancel()
+        self.syncPollingTask = nil
     }
 
     private func terminateIfAlreadyRunning() {
@@ -321,7 +319,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Create new settings window with SwiftUI content
-        let hostingController = NSHostingController(rootView: PreferencesView(eventCache: self.eventCache))
+        let preferencesView = PreferencesView(onForceSync: { [weak self] in
+            await self?.performForceFullSync() ?? .failure("App not available")
+        })
+        let hostingController = NSHostingController(rootView: preferencesView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "GCalNotifier Settings"
         window.styleMask = [.titled, .closable]

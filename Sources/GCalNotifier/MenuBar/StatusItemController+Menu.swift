@@ -154,11 +154,11 @@ public enum MenuBuilder {
 
     private static func makeMeetingItem(event: CalendarEvent, isConflicting: Bool) -> MenuItem {
         let icon = if isConflicting {
-            "!"
+            "⚠️"
         } else if event.meetingLinks.isEmpty {
-            "o"
+            "📅"
         } else {
-            "v"
+            "📹"
         }
 
         let timeString = Self.formatTime(event.startTime)

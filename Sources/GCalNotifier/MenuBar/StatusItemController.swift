@@ -23,12 +23,14 @@ public typealias DisplayResult = (text: String, newState: StatusItemState)
 /// Pure logic functions for status item behavior, testable without AppKit.
 public enum StatusItemLogic {
     /// Format a countdown string for display.
+    /// Uses ceiling so "12m 30s left" shows as "13m" not "12m".
     public static func formatCountdown(secondsUntil interval: TimeInterval) -> String {
         if interval <= 0 {
             return "now"
         }
 
-        let totalMinutes = Int(interval / 60)
+        // Round up - if there's any partial minute, count it as a full minute
+        let totalMinutes = Int(ceil(interval / 60))
         let hours = totalMinutes / 60
         let remainingMinutes = totalMinutes % 60
 

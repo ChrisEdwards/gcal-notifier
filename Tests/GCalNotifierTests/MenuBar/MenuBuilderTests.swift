@@ -207,7 +207,7 @@ struct MeetingItemTests {
             Issue.record("Expected meeting item")
             return
         }
-        #expect(icon == "v")
+        #expect(icon == "📹")
         #expect(enabled == true)
     }
 
@@ -222,7 +222,7 @@ struct MeetingItemTests {
             Issue.record("Expected meeting item")
             return
         }
-        #expect(icon == "o")
+        #expect(icon == "📅")
         #expect(enabled == false)
     }
 
@@ -238,7 +238,7 @@ struct MeetingItemTests {
             Issue.record("Expected meeting item")
             return
         }
-        #expect(icon == "!")
+        #expect(icon == "⚠️")
     }
 
     @Test("Meeting title truncated to 25 characters")

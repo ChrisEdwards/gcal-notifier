@@ -77,8 +77,21 @@ if [ -d "$PROJECT_ROOT/Sources/GCalNotifier/Resources/Sounds" ]; then
     cp -r "$PROJECT_ROOT/Sources/GCalNotifier/Resources/Sounds" "$APP_BUNDLE/Contents/Resources/" 2>/dev/null || true
 fi
 
-# Ad-hoc sign for local development
-codesign --force --sign - "$APP_BUNDLE" 2>/dev/null || true
+# Sign for local development
+# Try to find a development identity for consistent Keychain access
+# Priority: 1) GCalNotifier Dev (self-signed), 2) Apple Development, 3) Mac Developer
+SIGNING_IDENTITY=$(security find-identity -v -p codesigning | grep -m1 "GCalNotifier Dev\|Apple Development\|Mac Developer" | sed 's/.*"\(.*\)".*/\1/' || echo "")
+
+if [ -n "$SIGNING_IDENTITY" ]; then
+    echo "Signing with: $SIGNING_IDENTITY"
+    codesign --force --sign "$SIGNING_IDENTITY" --entitlements "$PROJECT_ROOT/GCalNotifier.entitlements" "$APP_BUNDLE"
+else
+    echo ""
+    echo "⚠️  No development identity found - Keychain will prompt on each rebuild!"
+    echo "   Run: ./Scripts/setup_dev_certificate.sh (one-time setup)"
+    echo ""
+    codesign --force --sign - "$APP_BUNDLE" 2>/dev/null || true
+fi
 
 # Launch the app bundle
 echo "Launching $APP_NAME..."

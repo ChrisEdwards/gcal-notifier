@@ -37,6 +37,7 @@ struct ShortcutsTab: View {
                     KeyboardShortcuts.reset(.joinNextMeeting, .dismissAlert)
                 }
                 .disabled(!self.settings.shortcutsEnabled)
+                .pointerCursor()
             }
 
             Section {
