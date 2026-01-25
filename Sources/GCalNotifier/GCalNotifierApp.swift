@@ -1,5 +1,6 @@
 import AppKit
 import GCalNotifierCore
+import OSLog
 import SwiftUI
 
 @main
@@ -25,6 +26,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController?
     private var menuController: MenuController?
 
+    // MARK: - Core Services
+
+    /// Local storage for calendar events - shared across components
+    private var eventCache: EventCache?
+
+    /// Settings store - shared across components
+    private let settingsStore = SettingsStore()
+
+    /// Alert window controller for meeting alerts
+    private var alertWindowController: AlertWindowController?
+
     // MARK: - Handlers
 
     private let firstLaunchHandler = FirstLaunchHandler()
@@ -35,11 +47,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_: Notification) {
         self.terminateIfAlreadyRunning()
 
+        // Initialize core services
+        self.setupCoreServices()
+
         // Set up menu bar
         self.setupMenuBar()
 
-        // Set up global keyboard shortcuts
-        ShortcutManager.shared.setup()
+        // Set up global keyboard shortcuts with dependencies
+        self.setupShortcuts()
 
         // Set up first launch handler delegate
         self.firstLaunchHandler.setDelegate(self)
@@ -48,6 +63,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await self.firstLaunchHandler.handleFirstLaunchIfNeeded()
         }
+    }
+
+    private func setupCoreServices() {
+        // Create EventCache - this may fail if filesystem is unavailable
+        do {
+            self.eventCache = try EventCache()
+            Logger.app.info("EventCache initialized successfully")
+        } catch {
+            // Log error but continue - app can still function in limited capacity
+            // EventCache failure is not fatal; sync just won't persist
+            Logger.app.error("Failed to create EventCache: \(error.localizedDescription)")
+        }
+
+        // Create AlertWindowController
+        self.alertWindowController = AlertWindowController()
+    }
+
+    private func setupShortcuts() {
+        // Configure ShortcutManager with dependencies if available
+        if let eventCache, let alertWindowController {
+            ShortcutManager.shared.configure(
+                eventCache: eventCache,
+                alertWindowController: alertWindowController,
+                settings: self.settingsStore
+            )
+        }
+
+        // Set up keyboard shortcut handlers
+        ShortcutManager.shared.setup()
     }
 
     private func setupMenuBar() {
