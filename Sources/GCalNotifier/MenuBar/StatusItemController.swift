@@ -171,6 +171,10 @@ public final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private var menu: NSMenu?
 
+    // MARK: - Data Source
+
+    private var eventCache: EventCache?
+
     // MARK: - State
 
     private var currentText = ""
@@ -205,6 +209,19 @@ public final class StatusItemController: NSObject {
 
         self.setupStatusItem()
         startUpdateTimer()
+    }
+
+    // MARK: - Configuration
+
+    /// Configure the controller with an EventCache to load events from.
+    /// Call this after initialization to enable automatic event loading.
+    public func configure(eventCache: EventCache) {
+        self.eventCache = eventCache
+
+        // Load events immediately from cache
+        Task {
+            await self.loadEventsFromCache()
+        }
     }
 
     deinit {
@@ -374,9 +391,24 @@ extension StatusItemController {
             repeats: false
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.updateDisplay()
+                // Reload from cache on each tick to pick up sync changes
+                await self?.loadEventsFromCache()
                 self?.scheduleNextUpdate()
             }
+        }
+    }
+
+    /// Load events from the configured EventCache and update the display.
+    /// Called automatically on timer ticks when EventCache is configured.
+    public func loadEventsFromCache() async {
+        guard let eventCache else { return }
+
+        do {
+            let cachedEvents = try await eventCache.load()
+            self.updateEvents(cachedEvents)
+        } catch {
+            // Cache load failed - keep existing events, don't clear display
+            // The display will show stale data until next successful load
         }
     }
 }

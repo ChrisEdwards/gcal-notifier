@@ -165,6 +165,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemController.onMenuWillOpen = { [weak menuController] in
             menuController?.buildMenu() ?? NSMenu()
         }
+
+        // Configure with EventCache if available for countdown display
+        if let eventCache {
+            statusItemController.configure(eventCache: eventCache)
+        }
+
         self.statusItemController = statusItemController
     }
 
