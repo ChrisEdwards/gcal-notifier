@@ -51,6 +51,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let firstLaunchHandler = FirstLaunchHandler()
     private let notificationPermissionHandler = NotificationPermissionHandler()
 
+    /// Task monitoring OAuth state for auto-starting sync
+    private var authStateMonitorTask: Task<Void, Never>?
+
+    /// Tracks last known auth state to detect transitions
+    private var lastKnownAuthState: AuthState = .unconfigured
+
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_: Notification) {
@@ -113,15 +119,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Create AlertWindowController
         self.alertWindowController = AlertWindowController()
 
-        // Load stored OAuth credentials (async)
+        // Load stored OAuth credentials and start monitoring auth state
         Task {
             do {
                 try await self.oauthProvider.loadStoredCredentials()
                 let state = await self.oauthProvider.state
                 Logger.app.info("OAuth state after loading credentials: \(String(describing: state))")
+
+                // If already authenticated, start sync immediately
+                if state.canMakeApiCalls {
+                    await self.handleAuthenticationCompleted()
+                }
             } catch {
                 Logger.app.error("Failed to load OAuth credentials: \(error.localizedDescription)")
             }
+
+            // Start monitoring for auth state changes
+            self.startAuthStateMonitoring()
+        }
+    }
+
+    /// Starts monitoring OAuth state for changes to trigger sync.
+    private func startAuthStateMonitoring() {
+        // Cancel any existing monitor
+        self.authStateMonitorTask?.cancel()
+
+        self.authStateMonitorTask = Task {
+            while !Task.isCancelled {
+                // Poll auth state every second
+                try? await Task.sleep(for: .seconds(1))
+
+                let currentState = await self.oauthProvider.state
+
+                // Detect transition to authenticated state
+                if currentState.canMakeApiCalls, !self.lastKnownAuthState.canMakeApiCalls {
+                    Logger.app.info("Auth state transitioned to authenticated, starting sync")
+                    await self.handleAuthenticationCompleted()
+                }
+
+                self.lastKnownAuthState = currentState
+            }
+        }
+    }
+
+    /// Called when authentication completes successfully - triggers initial sync.
+    private func handleAuthenticationCompleted() async {
+        guard let syncEngine else {
+            Logger.app.warning("SyncEngine not available, cannot start sync after authentication")
+            return
+        }
+
+        // Update menu to show we're no longer in setup mode
+        self.menuController?.updateSetupRequired(false)
+
+        // Trigger initial sync
+        Logger.app.info("Triggering initial sync after authentication")
+        do {
+            let result = try await syncEngine.sync(calendarId: "primary")
+            Logger.app.info("Initial sync complete: \(result.events.count) events")
+        } catch {
+            Logger.app.error("Initial sync failed: \(error.localizedDescription)")
         }
     }
 
@@ -177,6 +234,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_: Notification) {
         // Clean up keyboard shortcuts
         ShortcutManager.shared.teardown()
+
+        // Stop auth monitoring
+        self.authStateMonitorTask?.cancel()
+        self.authStateMonitorTask = nil
     }
 
     private func terminateIfAlreadyRunning() {
