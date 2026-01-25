@@ -37,11 +37,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Alert window controller for meeting alerts
     private var alertWindowController: AlertWindowController?
 
+    /// Alert engine for scheduling and firing alerts
+    private var alertEngine: AlertEngine?
+
+    /// Alert delivery implementation
+    private var alertDelivery: WindowAlertDelivery?
+
     /// OAuth provider for Google authentication
     private let oauthProvider = GoogleOAuthProvider()
 
     /// App state store for sync tokens
     private var appStateStore: AppStateStore?
+
+    /// Scheduled alerts persistence
+    private var alertsStore: ScheduledAlertsStore?
 
     /// Calendar sync engine - orchestrates sync operations
     private var syncEngine: SyncEngine?
@@ -81,17 +90,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupCoreServices() {
-        // Create EventCache - this may fail if filesystem is unavailable
+        self.setupDataStores()
+        self.setupSyncEngine()
+        self.alertWindowController = AlertWindowController()
+        self.setupAlertEngine()
+        self.setupOAuthAndSync()
+    }
+
+    private func setupDataStores() {
         do {
             self.eventCache = try EventCache()
             Logger.app.info("EventCache initialized successfully")
         } catch {
-            // Log error but continue - app can still function in limited capacity
-            // EventCache failure is not fatal; sync just won't persist
             Logger.app.error("Failed to create EventCache: \(error.localizedDescription)")
         }
 
-        // Create AppStateStore for sync tokens
         do {
             self.appStateStore = try AppStateStore()
             Logger.app.info("AppStateStore initialized successfully")
@@ -99,42 +112,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Logger.app.error("Failed to create AppStateStore: \(error.localizedDescription)")
         }
 
-        // Create SyncEngine if all dependencies are available
-        if let eventCache, let appStateStore {
-            let httpClient = URLSessionHTTPClient()
-            let calendarClient = GoogleCalendarClient(httpClient: httpClient, tokenProvider: self.oauthProvider)
-            let eventFilter = EventFilter(settings: self.settingsStore)
-
-            self.syncEngine = SyncEngine(
-                calendarClient: calendarClient,
-                eventCache: eventCache,
-                appState: appStateStore,
-                eventFilter: eventFilter
-            )
-            Logger.app.info("SyncEngine initialized successfully")
-        } else {
-            Logger.app.warning("SyncEngine not created: missing EventCache or AppStateStore")
+        do {
+            self.alertsStore = try ScheduledAlertsStore()
+            Logger.app.info("ScheduledAlertsStore initialized successfully")
+        } catch {
+            Logger.app.error("Failed to create ScheduledAlertsStore: \(error.localizedDescription)")
         }
+    }
 
-        // Create AlertWindowController
-        self.alertWindowController = AlertWindowController()
+    private func setupSyncEngine() {
+        guard let eventCache, let appStateStore else {
+            Logger.app.warning("SyncEngine not created: missing EventCache or AppStateStore")
+            return
+        }
+        let httpClient = URLSessionHTTPClient()
+        let calendarClient = GoogleCalendarClient(httpClient: httpClient, tokenProvider: self.oauthProvider)
+        let eventFilter = EventFilter(settings: self.settingsStore)
+        self.syncEngine = SyncEngine(
+            calendarClient: calendarClient,
+            eventCache: eventCache,
+            appState: appStateStore,
+            eventFilter: eventFilter
+        )
+        Logger.app.info("SyncEngine initialized successfully")
+    }
 
-        // Load stored OAuth credentials and start monitoring auth state
+    private func setupAlertEngine() {
+        guard let eventCache, let alertsStore, let alertWindowController else {
+            Logger.app.warning("AlertEngine not created: missing dependencies")
+            return
+        }
+        Task {
+            let delivery = WindowAlertDelivery(
+                windowController: alertWindowController,
+                eventCache: eventCache,
+                settings: self.settingsStore
+            )
+            self.alertDelivery = delivery
+
+            let engine = AlertEngine(
+                alertsStore: alertsStore,
+                scheduler: DispatchAlertScheduler(),
+                delivery: delivery
+            )
+            self.alertEngine = engine
+            await MainActor.run { delivery.setAlertEngine(engine) }
+
+            do {
+                try await engine.reconcileOnRelaunch()
+                Logger.app.info("AlertEngine reconciled on relaunch")
+            } catch {
+                Logger.app.error("Failed to reconcile alerts: \(error.localizedDescription)")
+            }
+            Logger.app.info("AlertEngine initialized successfully")
+        }
+    }
+
+    private func setupOAuthAndSync() {
         Task {
             do {
                 try await self.oauthProvider.loadStoredCredentials()
                 let state = await self.oauthProvider.state
                 Logger.app.info("OAuth state after loading credentials: \(String(describing: state))")
-
-                // If already authenticated, start sync immediately
                 if state.canMakeApiCalls {
                     await self.handleAuthenticationCompleted()
                 }
             } catch {
                 Logger.app.error("Failed to load OAuth credentials: \(error.localizedDescription)")
             }
-
-            // Start monitoring for auth state changes
             self.startAuthStateMonitoring()
         }
     }
@@ -177,9 +222,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let result = try await syncEngine.sync(calendarId: "primary")
             Logger.app.info("Initial sync complete: \(result.events.count) events")
+
+            // Schedule alerts for synced events
+            await self.scheduleAlertsForEvents(result.events)
         } catch {
             Logger.app.error("Initial sync failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Schedules alerts for the given events using the AlertEngine.
+    private func scheduleAlertsForEvents(_ events: [CalendarEvent]) async {
+        guard let alertEngine else {
+            Logger.app.warning("AlertEngine not available, cannot schedule alerts")
+            return
+        }
+
+        Logger.app.info("Scheduling alerts for \(events.count) events")
+        await alertEngine.scheduleAlerts(for: events, settings: self.settingsStore)
+
+        let scheduledCount = await alertEngine.scheduledAlerts.count
+        Logger.app.info("AlertEngine now has \(scheduledCount) scheduled alerts")
     }
 
     private func setupShortcuts() {
