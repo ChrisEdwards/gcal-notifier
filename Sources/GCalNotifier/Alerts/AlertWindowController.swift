@@ -364,11 +364,8 @@ extension AlertWindowController {
     private func openInCalendar() {
         guard let event = currentEvent else { return }
 
-        // Google Calendar event URL
-        var components = URLComponents(string: "https://calendar.google.com/calendar/event")
-        components?.queryItems = [URLQueryItem(name: "eid", value: event.id)]
-        guard let url = components?.url else {
-            Logger.alerts.error("Failed to build calendar URL for event: \(event.id)")
+        guard let url = event.htmlLink else {
+            Logger.alerts.error("No calendar URL for event: \(event.id)")
             return
         }
         NSWorkspace.shared.open(url)

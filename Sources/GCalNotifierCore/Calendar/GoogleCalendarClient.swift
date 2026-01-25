@@ -189,6 +189,7 @@ public actor GoogleCalendarClient {
         let meetingLinks = self.extractMeetingLinks(from: item)
         let responseStatus = self.parseResponseStatus(from: item)
         let attendeeCount = item.attendees?.count ?? 1
+        let htmlLink = item.htmlLink.flatMap { URL(string: $0) }
 
         return CalendarEvent(
             id: item.id,
@@ -201,7 +202,8 @@ public actor GoogleCalendarClient {
             meetingLinks: meetingLinks,
             isOrganizer: item.organizer?.self_ ?? false,
             attendeeCount: attendeeCount,
-            responseStatus: responseStatus
+            responseStatus: responseStatus,
+            htmlLink: htmlLink
         )
     }
 
@@ -413,14 +415,11 @@ private struct GoogleEventItem: Codable {
     let start: GoogleEventTime?
     let end: GoogleEventTime?
     let hangoutLink: String?
+    let htmlLink: String?
     let conferenceData: GoogleConferenceData?
     let organizer: GoogleOrganizer?
     let attendees: [GoogleAttendee]?
     let status: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, summary, description, location, start, end, hangoutLink, conferenceData, organizer, attendees, status
-    }
 }
 
 private struct GoogleEventTime: Codable {

@@ -94,6 +94,7 @@ public struct CalendarEvent: Codable, Identifiable, Sendable, Equatable {
     public let isOrganizer: Bool
     public let attendeeCount: Int
     public let responseStatus: ResponseStatus
+    public let htmlLink: URL?
 
     public init(
         id: String,
@@ -106,7 +107,8 @@ public struct CalendarEvent: Codable, Identifiable, Sendable, Equatable {
         meetingLinks: [MeetingLink],
         isOrganizer: Bool,
         attendeeCount: Int,
-        responseStatus: ResponseStatus
+        responseStatus: ResponseStatus,
+        htmlLink: URL? = nil
     ) {
         self.id = id
         self.calendarId = calendarId
@@ -119,6 +121,7 @@ public struct CalendarEvent: Codable, Identifiable, Sendable, Equatable {
         self.isOrganizer = isOrganizer
         self.attendeeCount = attendeeCount
         self.responseStatus = responseStatus
+        self.htmlLink = htmlLink
     }
 }
 
