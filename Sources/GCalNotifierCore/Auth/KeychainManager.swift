@@ -229,10 +229,10 @@ public actor KeychainManager {
         }
 
         // Delete existing item first to ensure clean overwrite
-        SecItemDelete(baseQuery(account: account) as CFDictionary)
+        SecItemDelete(self.baseQuery(account: account) as CFDictionary)
 
         // Add new item
-        var addQuery = baseQuery(account: account)
+        var addQuery = self.baseQuery(account: account)
         addQuery[kSecValueData as String] = data
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 
@@ -245,7 +245,7 @@ public actor KeychainManager {
 
     /// Loads a Codable value from the Keychain.
     private func load<T: Codable>(account: Account) throws -> T? {
-        var query = baseQuery(account: account)
+        var query = self.baseQuery(account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 

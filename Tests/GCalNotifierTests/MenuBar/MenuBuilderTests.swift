@@ -46,7 +46,7 @@ private func makeTestLink(urlString: String = "https://meet.google.com/abc-defg-
 private func testNow() -> Date {
     let calendar = Calendar.current
     let today = calendar.startOfDay(for: Date())
-    return calendar.date(byAdding: .hour, value: 10, to: today)!
+    return calendar.date(byAdding: .hour, value: 10, to: today) ?? today
 }
 
 // MARK: - MenuBuilder Tests

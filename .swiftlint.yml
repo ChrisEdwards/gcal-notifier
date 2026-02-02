@@ -1,6 +1,7 @@
 disabled_rules:
   - trailing_whitespace  # SwiftFormat handles
   - trailing_comma       # SwiftFormat handles (enforces trailing commas)
+  - opening_brace        # SwiftFormat handles (wrapMultilineStatementBraces)
   - todo                 # Allow during development
   - identifier_name      # Allow short closure names
 

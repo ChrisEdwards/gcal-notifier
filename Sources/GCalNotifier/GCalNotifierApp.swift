@@ -224,7 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Called when authentication completes successfully - triggers initial sync and starts polling.
     private func handleAuthenticationCompleted() async {
-        guard syncEngine != nil else {
+        guard self.syncEngine != nil else {
             Logger.app.warning("SyncEngine not available, cannot start sync after authentication")
             return
         }

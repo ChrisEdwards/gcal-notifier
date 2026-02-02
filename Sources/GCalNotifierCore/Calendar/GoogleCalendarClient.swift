@@ -496,8 +496,5 @@ private struct GoogleErrorDetail: Codable {
 // MARK: - JSON Decoder Extension
 
 extension JSONDecoder {
-    static let calendarDecoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        return decoder
-    }()
+    static let calendarDecoder = JSONDecoder()
 }
