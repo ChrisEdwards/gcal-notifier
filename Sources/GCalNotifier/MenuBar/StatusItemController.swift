@@ -41,17 +41,6 @@ public enum StatusItemLogic {
         }
     }
 
-    /// Format back-to-back countdown string showing both current meeting end and next meeting start.
-    /// Format: "12m → 5m" (current ends in 12m, next starts in 5m)
-    public static func formatBackToBackCountdown(
-        currentEndsIn: TimeInterval,
-        nextStartsIn: TimeInterval
-    ) -> String {
-        let currentMinutes = max(0, Int(currentEndsIn / 60))
-        let nextMinutes = max(0, Int(nextStartsIn / 60))
-        return "\(currentMinutes)m → \(nextMinutes)m"
-    }
-
     /// Calculate the appropriate update interval based on time until meeting.
     public static func calculateUpdateInterval(secondsUntilMeeting: TimeInterval?) -> TimeInterval {
         guard let timeUntil = secondsUntilMeeting else {
@@ -128,7 +117,7 @@ public enum StatusItemLogic {
     }
 
     /// Generate the display text for a back-to-back meeting situation.
-    /// Shows dual countdown: current meeting end time → next meeting start time
+    /// Simply shows countdown to next meeting start time.
     public static func generateBackToBackDisplayText(
         state: StatusItemState,
         backToBackState: BackToBackState,
@@ -146,16 +135,13 @@ public enum StatusItemLogic {
 
         // If not in a back-to-back situation, fall back to normal display
         guard backToBackState.isBackToBack,
-              let current = backToBackState.currentMeeting,
               let next = backToBackState.nextBackToBackMeeting
         else {
             return ("📅 --", state)
         }
 
-        let currentEndsIn = current.endTime.timeIntervalSince(now)
         let nextStartsIn = next.startTime.timeIntervalSince(now)
-
-        let countdown = self.formatBackToBackCountdown(currentEndsIn: currentEndsIn, nextStartsIn: nextStartsIn)
+        let countdown = self.formatCountdown(secondsUntil: nextStartsIn)
         return ("📅 \(countdown)", state)
     }
 }
