@@ -4,5 +4,19 @@
       "Bash(make check-test:*)",
       "Bash(make all:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "make format && make check",
+            "statusMessage": "Formatting and linting before commit..."
+          }
+        ]
+      }
+    ]
   }
 }
