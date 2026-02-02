@@ -13,7 +13,7 @@ public actor AlertEngine {
     // MARK: - State
 
     private var alerts: [String: ScheduledAlert] = [:]
-    private var acknowledgedEventIds: Set<String> = []
+    private var acknowledgedAlertIds: Set<String> = []
     private var isInitialized = false
 
     /// Provider for back-to-back context. Set this to enable back-to-back detection during alerts.
@@ -32,9 +32,9 @@ public actor AlertEngine {
         Array(self.alerts.values)
     }
 
-    /// Event IDs that have been acknowledged.
-    public var acknowledgedEvents: Set<String> {
-        self.acknowledgedEventIds
+    /// Alert IDs that have been acknowledged (dismissing only skips that specific stage).
+    public var acknowledgedAlerts: Set<String> {
+        self.acknowledgedAlertIds
     }
 
     // MARK: - Initialization
@@ -72,8 +72,6 @@ public actor AlertEngine {
 
         for event in events {
             guard filter.shouldAlert(for: event) else { continue }
-            let eventKey = event.qualifiedId
-            guard !self.acknowledgedEventIds.contains(eventKey) else { continue }
 
             await self.scheduleStageAlert(
                 for: event,
@@ -102,10 +100,18 @@ public actor AlertEngine {
         await self.persistAlerts()
     }
 
-    /// Marks an event as acknowledged, preventing future alerts for it.
-    public func acknowledgeAlert(eventId: String) async {
-        self.acknowledgedEventIds.insert(eventId)
-        await self.cancelAlerts(for: eventId)
+    /// Marks a specific alert as acknowledged, preventing only that stage from re-firing.
+    /// Other stages for the same event will still fire.
+    public func acknowledgeAlert(alertId: String) async {
+        self.acknowledgedAlertIds.insert(alertId)
+        await self.cancelAlert(alertId: alertId)
+    }
+
+    /// Cancels a specific alert by ID.
+    private func cancelAlert(alertId: String) async {
+        await self.scheduler.cancel(alertId: alertId)
+        self.alerts.removeValue(forKey: alertId)
+        await self.persistAlerts()
     }
 
     /// Snoozes an alert by the specified duration.
@@ -163,7 +169,10 @@ public actor AlertEngine {
         }
 
         // Clear acknowledgments for events that no longer exist
-        self.acknowledgedEventIds = self.acknowledgedEventIds.intersection(newEventIds)
+        // Alert IDs are formatted as "{eventId}-{stage}", so check if any event ID is a prefix
+        self.acknowledgedAlertIds = self.acknowledgedAlertIds.filter { alertId in
+            newEventIds.contains { eventId in alertId.hasPrefix(eventId) }
+        }
 
         // Schedule alerts for new/updated events
         await self.scheduleAlerts(for: newEvents, settings: settings)
@@ -295,6 +304,10 @@ public actor AlertEngine {
         guard minutesBefore > 0 else { return }
 
         let alertId = event.alertIdentifier(for: stage)
+
+        // Skip if this specific alert was already dismissed
+        guard !self.acknowledgedAlertIds.contains(alertId) else { return }
+
         if let existing = alerts[alertId],
            existing.scheduledFireTime <= now,
            existing.eventStartTime == event.startTime

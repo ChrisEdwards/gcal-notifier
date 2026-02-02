@@ -291,17 +291,22 @@ struct AlertEngineAcknowledgeAlertTests {
         let settings = try makeAlertTestSettings()
 
         await engine.scheduleAlerts(for: [event], settings: settings)
-        await engine.acknowledgeAlert(eventId: event.qualifiedId)
 
-        let acknowledged = await engine.acknowledgedEvents
-        #expect(acknowledged.contains(event.qualifiedId))
+        // Acknowledge stage1 alert - stage2 should remain
+        let stage1AlertId = event.alertIdentifier(for: .stage1)
+        await engine.acknowledgeAlert(alertId: stage1AlertId)
 
+        let acknowledged = await engine.acknowledgedAlerts
+        #expect(acknowledged.contains(stage1AlertId))
+
+        // Only the acknowledged stage is removed; other stage remains
         let remaining = await engine.scheduledAlerts
-        #expect(remaining.isEmpty)
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.stage == .stage2)
     }
 
-    @Test("Acknowledged events are not rescheduled")
-    func acknowledgedEventsNotRescheduled() async throws {
+    @Test("Acknowledged alert stage is not rescheduled, but other stage is")
+    func acknowledgedAlertNotRescheduled() async throws {
         let fileURL = makeAlertTestTempFileURL()
         defer { cleanupAlertTestTempDir(fileURL) }
 
@@ -320,12 +325,16 @@ struct AlertEngineAcknowledgeAlertTests {
         let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
         let settings = try makeAlertTestSettings()
 
-        await engine.acknowledgeAlert(eventId: event.qualifiedId)
+        // Acknowledge only stage1 before scheduling
+        let stage1AlertId = event.alertIdentifier(for: .stage1)
+        await engine.acknowledgeAlert(alertId: stage1AlertId)
         await scheduler.reset()
 
         await engine.scheduleAlerts(for: [event], settings: settings)
 
+        // Stage1 should not be scheduled, but stage2 should be
         let scheduled = await scheduler.scheduledAlerts
-        #expect(scheduled.isEmpty)
+        #expect(scheduled.count == 1)
+        #expect(scheduled.first?.alertId.contains("stage2") == true)
     }
 }

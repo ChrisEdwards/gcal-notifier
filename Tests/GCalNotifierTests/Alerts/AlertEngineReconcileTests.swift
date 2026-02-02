@@ -57,17 +57,22 @@ struct AlertEngineReconcileTests {
             dateProvider: { baseTime }
         )
 
-        await engine.acknowledgeAlert(eventId: "cal-1::event-1")
-        await engine.acknowledgeAlert(eventId: "cal-1::event-2")
+        // Acknowledge alerts using alert IDs (eventId-stage format)
+        let event1AlertId = "cal-1::event-1-stage1"
+        let event2AlertId = "cal-1::event-2-stage1"
+        await engine.acknowledgeAlert(alertId: event1AlertId)
+        await engine.acknowledgeAlert(alertId: event2AlertId)
 
         let event2 = makeAlertTestEvent(id: "event-2", startTime: eventStart)
         let settings = try makeAlertTestSettings()
 
         await engine.reconcile(newEvents: [event2], settings: settings)
 
-        let acknowledged = await engine.acknowledgedEvents
-        #expect(!acknowledged.contains("cal-1::event-1"))
-        #expect(acknowledged.contains(event2.qualifiedId))
+        // Event1's acknowledgment should be cleared (event deleted)
+        // Event2's acknowledgment should remain (event still exists)
+        let acknowledged = await engine.acknowledgedAlerts
+        #expect(!acknowledged.contains(event1AlertId))
+        #expect(acknowledged.contains(event2AlertId))
     }
 }
 

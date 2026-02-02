@@ -387,15 +387,17 @@ extension AlertWindowController {
 
     private func dismiss() {
         guard let event = currentEvent,
+              let stage = currentStage,
               let engine = alertEngine
         else {
             close()
             return
         }
 
+        let alertId = event.alertIdentifier(for: stage)
         Task {
-            await engine.acknowledgeAlert(eventId: event.qualifiedId)
-            Logger.alerts.info("Dismissed and acknowledged alert for: \(event.id)")
+            await engine.acknowledgeAlert(alertId: alertId)
+            Logger.alerts.info("Dismissed alert \(stage.rawValue) for: \(event.id)")
         }
         close()
     }
@@ -409,9 +411,10 @@ extension AlertWindowController: NSWindowDelegate {
         defer { self.isSnoozing = false }
 
         guard !self.isSnoozing else { return }
-        if let event = currentEvent, let engine = alertEngine {
+        if let event = currentEvent, let stage = currentStage, let engine = alertEngine {
+            let alertId = event.alertIdentifier(for: stage)
             Task {
-                await engine.acknowledgeAlert(eventId: event.qualifiedId)
+                await engine.acknowledgeAlert(alertId: alertId)
             }
         }
     }
