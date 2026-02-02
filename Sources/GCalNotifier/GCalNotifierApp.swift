@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let firstLaunchHandler = FirstLaunchHandler()
     private let notificationPermissionHandler = NotificationPermissionHandler()
+    private let sleepWakeHandler = SleepWakeHandler()
 
     /// Task monitoring OAuth state for auto-starting sync
     private var authStateMonitorTask: Task<Void, Never>?
@@ -99,6 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.alertWindowController = AlertWindowController()
         self.setupAlertEngine()
         self.setupOAuthAndSync()
+        self.sleepWakeHandler.setDelegate(self)
+        self.sleepWakeHandler.startMonitoring()
     }
 
     private func setupDataStores() {
@@ -298,6 +301,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Stop sync polling
         self.syncPollingTask?.cancel()
         self.syncPollingTask = nil
+
+        // Stop sleep/wake monitoring
+        self.sleepWakeHandler.stopMonitoring()
     }
 
     private func terminateIfAlreadyRunning() {
@@ -359,5 +365,27 @@ extension AppDelegate: FirstLaunchHandlerDelegate {
         // - Enable all calendars
         // - Trigger initial sync
         // These will be handled by the appropriate services when available
+    }
+}
+
+// MARK: - SleepWakeHandlerDelegate
+
+extension AppDelegate: SleepWakeHandlerDelegate {
+    nonisolated func sleepWakeHandlerDidWake(_: SleepWakeHandler) async {
+        let engine = await MainActor.run { self.alertEngine }
+        if let engine {
+            _ = await engine.checkForMissedAlerts()
+        }
+
+        Task { @MainActor in
+            Logger.app.info("System woke - syncing and rescheduling alerts")
+            await self.performSync()
+        }
+    }
+
+    nonisolated func sleepWakeHandlerWillSleep(_: SleepWakeHandler) async {
+        await MainActor.run {
+            Logger.app.info("System sleeping - timers may pause")
+        }
     }
 }

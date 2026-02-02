@@ -136,6 +136,7 @@ public final class AlertWindowController: NSWindowController {
     private var currentEvent: CalendarEvent?
     private var currentStage: AlertStage?
     private var alertEngine: AlertEngine?
+    private var isSnoozing = false
 
     /// Detects if running in a test environment to avoid showing actual windows.
     private static var isRunningTests: Bool {
@@ -360,15 +361,16 @@ extension AlertWindowController {
 
         let alertId = event.alertIdentifier(for: stage)
 
-        Task {
+        Task { @MainActor in
             do {
                 try await engine.snooze(alertId: alertId, duration: duration)
                 Logger.alerts.info("Snoozed alert: \(alertId) for \(Int(duration / 60))m")
+                self.isSnoozing = true
+                close() // Close but don't acknowledge
             } catch {
                 Logger.alerts.error("Failed to snooze: \(error.localizedDescription)")
             }
         }
-        close() // Close but don't acknowledge
     }
 
     private func openInCalendar() {
@@ -404,6 +406,9 @@ extension AlertWindowController {
 extension AlertWindowController: NSWindowDelegate {
     public func windowWillClose(_: Notification) {
         // Acknowledge when window is closed via close button
+        defer { self.isSnoozing = false }
+
+        guard !self.isSnoozing else { return }
         if let event = currentEvent, let engine = alertEngine {
             Task {
                 await engine.acknowledgeAlert(eventId: event.qualifiedId)

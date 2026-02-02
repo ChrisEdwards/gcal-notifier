@@ -148,6 +148,9 @@ public actor AlertEngine {
     /// Provider for presentation mode suppression. Set this to enable screen share/DND detection during alerts.
     private var presentationModeProvider: (@Sendable () async -> AlertDowngradeReason?)?
 
+    /// Grace period for late scheduling when sync happens just after a stage boundary.
+    private static let lateStageGracePeriod: TimeInterval = 2 * 60
+
     // MARK: - Public Access
 
     /// Currently scheduled alerts.
@@ -198,23 +201,18 @@ public actor AlertEngine {
             let eventKey = event.qualifiedId
             guard !self.acknowledgedEventIds.contains(eventKey) else { continue }
 
-            // Schedule Stage 1 if enabled and not in the past
-            if stage1Minutes > 0 {
-                let stage1Fire = event.startTime.addingTimeInterval(-Double(stage1Minutes * 60))
-                if stage1Fire > now {
-                    let alert = self.createAlert(for: event, stage: .stage1, fireTime: stage1Fire)
-                    await self.scheduleAlert(alert)
-                }
-            }
-
-            // Schedule Stage 2 if enabled and not in the past
-            if stage2Minutes > 0 {
-                let stage2Fire = event.startTime.addingTimeInterval(-Double(stage2Minutes * 60))
-                if stage2Fire > now {
-                    let alert = self.createAlert(for: event, stage: .stage2, fireTime: stage2Fire)
-                    await self.scheduleAlert(alert)
-                }
-            }
+            await self.scheduleStageAlert(
+                for: event,
+                stage: .stage1,
+                minutesBefore: stage1Minutes,
+                now: now
+            )
+            await self.scheduleStageAlert(
+                for: event,
+                stage: .stage2,
+                minutesBefore: stage2Minutes,
+                now: now
+            )
         }
 
         await self.persistAlerts()
@@ -404,6 +402,37 @@ public actor AlertEngine {
 
         self.alerts[alert.id] = alert
         await self.scheduleTimer(for: alert)
+    }
+
+    private func scheduleStageAlert(
+        for event: CalendarEvent,
+        stage: AlertStage,
+        minutesBefore: Int,
+        now: Date
+    ) async {
+        guard minutesBefore > 0 else { return }
+
+        let alertId = event.alertIdentifier(for: stage)
+        if let existing = alerts[alertId],
+           existing.scheduledFireTime <= now,
+           existing.eventStartTime == event.startTime {
+            // Avoid re-firing an alert that's already due or has fired for this same event time.
+            return
+        }
+
+        let stageFire = event.startTime.addingTimeInterval(-Double(minutesBefore * 60))
+        if stageFire > now {
+            let alert = self.createAlert(for: event, stage: stage, fireTime: stageFire)
+            await self.scheduleAlert(alert)
+            return
+        }
+
+        guard event.startTime > now else { return }
+        let lateBy = now.timeIntervalSince(stageFire)
+        guard lateBy <= Self.lateStageGracePeriod else { return }
+
+        let alert = self.createAlert(for: event, stage: stage, fireTime: now)
+        await self.scheduleAlert(alert)
     }
 
     private func scheduleTimer(for alert: ScheduledAlert) async {

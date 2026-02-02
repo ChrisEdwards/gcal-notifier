@@ -124,6 +124,34 @@ struct AlertEngineScheduleAlertsTests {
         #expect(scheduled.first?.alertId == event.alertIdentifier(for: .stage2))
     }
 
+    @Test("Schedule alerts within grace period fires immediately")
+    func scheduleAlertsWithinGracePeriodFiresImmediately() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let eventStart = baseTime.addingTimeInterval(9 * 60)
+
+        let engine = AlertEngine(
+            alertsStore: store, scheduler: scheduler, delivery: delivery,
+            dateProvider: { baseTime }
+        )
+
+        let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let settings = try makeAlertTestSettings(stage1Minutes: 10, stage2Minutes: 0)
+
+        await engine.scheduleAlerts(for: [event], settings: settings)
+
+        let scheduled = await scheduler.scheduledAlerts
+        #expect(scheduled.count == 1)
+        #expect(scheduled.first?.alertId == event.alertIdentifier(for: .stage1))
+        #expect(scheduled.first?.fireDate == baseTime)
+    }
+
     @Test("Schedule alerts for event already started schedules nothing")
     func scheduleAlertsEventAlreadyStartedSchedulesNothing() async throws {
         let fileURL = makeAlertTestTempFileURL()
