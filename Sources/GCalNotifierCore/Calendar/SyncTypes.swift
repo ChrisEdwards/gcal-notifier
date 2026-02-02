@@ -52,10 +52,14 @@ public struct MultiCalendarSyncResult: Sendable {
     }
 
     /// Whether all calendars synced successfully.
-    public var isFullSuccess: Bool { self.failedCalendars.isEmpty }
+    public var isFullSuccess: Bool {
+        self.failedCalendars.isEmpty
+    }
 
     /// Whether at least one calendar synced successfully.
-    public var isPartialSuccess: Bool { !self.successfulCalendars.isEmpty }
+    public var isPartialSuccess: Bool {
+        !self.successfulCalendars.isEmpty
+    }
 }
 
 // MARK: - SyncEngineDelegate

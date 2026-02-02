@@ -1,5 +1,4 @@
 import Foundation
-
 @testable import GCalNotifierCore
 
 // MARK: - Mock HTTP Client

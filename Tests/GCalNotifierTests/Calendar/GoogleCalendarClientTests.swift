@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifierCore
 
 // MARK: - Test Helpers
@@ -14,8 +13,13 @@ private actor MockTokenProvider: AccessTokenProvider {
         return self.accessToken
     }
 
-    func setAccessToken(_ token: String) { self.accessToken = token }
-    func setError(_ error: Error?) { self.errorToThrow = error }
+    func setAccessToken(_ token: String) {
+        self.accessToken = token
+    }
+
+    func setError(_ error: Error?) {
+        self.errorToThrow = error
+    }
 }
 
 private struct CalendarClientTestContext {

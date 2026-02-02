@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 @preconcurrency import UserNotifications
-
 @testable import GCalNotifier
 @testable import GCalNotifierCore
 
@@ -70,14 +69,14 @@ struct NotificationPermissionHandlerTests {
     // MARK: - Initialization
 
     @Test("handler can be initialized")
-    func handlerCanBeInitialized() async {
+    func handlerCanBeInitialized() {
         let mockCenter = MockPermissionNotificationCenter()
         let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
         #expect(handler != nil)
     }
 
     @Test("initial status is notDetermined")
-    func initialStatusIsNotDetermined() async {
+    func initialStatusIsNotDetermined() {
         let mockCenter = MockPermissionNotificationCenter()
         let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
         #expect(handler.authorizationStatus == .notDetermined)
@@ -205,7 +204,7 @@ struct NotificationPermissionHandlerTests {
     // MARK: - Monitoring
 
     @Test("startMonitoring can be called")
-    func startMonitoringCanBeCalled() async {
+    func startMonitoringCanBeCalled() {
         let mockCenter = MockPermissionNotificationCenter()
         let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
 
@@ -214,7 +213,7 @@ struct NotificationPermissionHandlerTests {
     }
 
     @Test("startMonitoring is idempotent")
-    func startMonitoringIsIdempotent() async {
+    func startMonitoringIsIdempotent() {
         let mockCenter = MockPermissionNotificationCenter()
         let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
 
@@ -224,7 +223,7 @@ struct NotificationPermissionHandlerTests {
     }
 
     @Test("stopMonitoring is idempotent")
-    func stopMonitoringIsIdempotent() async {
+    func stopMonitoringIsIdempotent() {
         let mockCenter = MockPermissionNotificationCenter()
         let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
 
@@ -234,7 +233,7 @@ struct NotificationPermissionHandlerTests {
     }
 
     @Test("stopMonitoring can be called without starting")
-    func stopMonitoringCanBeCalledWithoutStarting() async {
+    func stopMonitoringCanBeCalledWithoutStarting() {
         let mockCenter = MockPermissionNotificationCenter()
         let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
 
@@ -244,7 +243,7 @@ struct NotificationPermissionHandlerTests {
     // MARK: - Delegate Management
 
     @Test("delegate can be set")
-    func delegateCanBeSet() async {
+    func delegateCanBeSet() {
         let mockCenter = MockPermissionNotificationCenter()
         let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
         let delegate = MockPermissionDelegate()
@@ -253,7 +252,7 @@ struct NotificationPermissionHandlerTests {
     }
 
     @Test("delegate can be set to nil")
-    func delegateCanBeSetToNil() async {
+    func delegateCanBeSetToNil() {
         let mockCenter = MockPermissionNotificationCenter()
         let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
         let delegate = MockPermissionDelegate()

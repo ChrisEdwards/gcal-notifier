@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifier
 @testable import GCalNotifierCore
 
@@ -116,7 +115,7 @@ struct MenuControllerEventCacheTests {
     }
 
     @Test("loadEventsFromCache handles empty cache")
-    func loadEventsFromCacheHandlesEmptyCache() async throws {
+    func loadEventsFromCacheHandlesEmptyCache() async {
         let fileURL = makeTempFileURL()
         defer { cleanupTempDir(fileURL) }
 

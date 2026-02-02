@@ -53,7 +53,6 @@ struct OAuthSetupView: View {
 
     // MARK: - Setup Instructions
 
-    @ViewBuilder
     private var setupInstructions: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("To connect your Google Calendar, you'll need to create OAuth credentials:")
@@ -89,7 +88,6 @@ struct OAuthSetupView: View {
         .padding(.vertical, 4)
     }
 
-    @ViewBuilder
     private func instructionStep(number: Int, text: String, url: URL? = nil) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text("\(number).")
@@ -120,7 +118,6 @@ struct OAuthSetupView: View {
 
     // MARK: - Sign In Status
 
-    @ViewBuilder
     private var signInStatus: some View {
         HStack {
             self.statusIndicator
@@ -129,7 +126,6 @@ struct OAuthSetupView: View {
         }
     }
 
-    @ViewBuilder
     private var statusIndicator: some View {
         HStack(spacing: 8) {
             Circle()
@@ -208,7 +204,6 @@ struct OAuthSetupView: View {
 
     // MARK: - Error View
 
-    @ViewBuilder
     private func errorView(_ message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")

@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 @preconcurrency import UserNotifications
-
 @testable import GCalNotifierCore
 
 // MARK: - Captured Request Data
@@ -54,15 +53,25 @@ final class MockNotificationCenterStorage: @unchecked Sendable {
     private var _authorizationStatus: NotificationAuthorizationStatus = .authorized
     private var _addError: Error?
 
-    var pendingRequests: [CapturedNotificationRequest] { self.lock.withLock { self._pendingRequests } }
+    var pendingRequests: [CapturedNotificationRequest] {
+        self.lock.withLock { self._pendingRequests }
+    }
 
-    var removedIdentifiers: [String] { self.lock.withLock { self._removedIdentifiers } }
+    var removedIdentifiers: [String] {
+        self.lock.withLock { self._removedIdentifiers }
+    }
 
-    var registeredCategoryIdentifiers: [String] { self.lock.withLock { self._registeredCategoryIdentifiers } }
+    var registeredCategoryIdentifiers: [String] {
+        self.lock.withLock { self._registeredCategoryIdentifiers }
+    }
 
-    var addCallCount: Int { self.lock.withLock { self._addCallCount } }
+    var addCallCount: Int {
+        self.lock.withLock { self._addCallCount }
+    }
 
-    var delegateSet: Bool { self.lock.withLock { self._delegateSet } }
+    var delegateSet: Bool {
+        self.lock.withLock { self._delegateSet }
+    }
 
     var authorizationStatus: NotificationAuthorizationStatus {
         get { self.lock.withLock { self._authorizationStatus } }
@@ -113,11 +122,25 @@ final class MockNotificationCenterStorage: @unchecked Sendable {
 final class MockNotificationCenter: NotificationCenterProtocol, @unchecked Sendable {
     let storage = MockNotificationCenterStorage()
 
-    var pendingRequests: [CapturedNotificationRequest] { self.storage.pendingRequests }
-    var removedIdentifiers: [String] { self.storage.removedIdentifiers }
-    var registeredCategoryIdentifiers: [String] { self.storage.registeredCategoryIdentifiers }
-    var addCallCount: Int { self.storage.addCallCount }
-    var delegateSet: Bool { self.storage.delegateSet }
+    var pendingRequests: [CapturedNotificationRequest] {
+        self.storage.pendingRequests
+    }
+
+    var removedIdentifiers: [String] {
+        self.storage.removedIdentifiers
+    }
+
+    var registeredCategoryIdentifiers: [String] {
+        self.storage.registeredCategoryIdentifiers
+    }
+
+    var addCallCount: Int {
+        self.storage.addCallCount
+    }
+
+    var delegateSet: Bool {
+        self.storage.delegateSet
+    }
 
     func add(_ request: UNNotificationRequest) async throws {
         if let error = storage.addError {
@@ -171,7 +194,7 @@ final class MockNotificationCenter: NotificationCenterProtocol, @unchecked Senda
 @Suite("NotificationScheduler Tests")
 struct NotificationSchedulerTests {
     @Test("Schedule creates notification request with correct identifier")
-    func scheduleCreatesRequestWithCorrectIdentifier() async throws {
+    func scheduleCreatesRequestWithCorrectIdentifier() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -186,7 +209,7 @@ struct NotificationSchedulerTests {
     }
 
     @Test("Schedule creates notification with correct category")
-    func scheduleCreatesRequestWithCorrectCategory() async throws {
+    func scheduleCreatesRequestWithCorrectCategory() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -201,7 +224,7 @@ struct NotificationSchedulerTests {
     }
 
     @Test("Schedule creates notification with silent sound")
-    func scheduleCreatesRequestWithSilentSound() async throws {
+    func scheduleCreatesRequestWithSilentSound() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -216,7 +239,7 @@ struct NotificationSchedulerTests {
     }
 
     @Test("Schedule creates calendar trigger with correct date")
-    func scheduleCreatesCalendarTriggerWithCorrectDate() async throws {
+    func scheduleCreatesCalendarTriggerWithCorrectDate() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -243,7 +266,7 @@ struct NotificationSchedulerTests {
     }
 
     @Test("Cancel removes pending notification")
-    func cancelRemovesPendingNotification() async throws {
+    func cancelRemovesPendingNotification() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -262,7 +285,7 @@ struct NotificationSchedulerTests {
     }
 
     @Test("CancelAll removes all pending notifications")
-    func cancelAllRemovesAllPendingNotifications() async throws {
+    func cancelAllRemovesAllPendingNotifications() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -283,7 +306,7 @@ struct NotificationSchedulerTests {
     }
 
     @Test("Categories are registered on initialization")
-    func categoriesAreRegisteredOnInitialization() async throws {
+    func categoriesAreRegisteredOnInitialization() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         _ = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -295,7 +318,7 @@ struct NotificationSchedulerTests {
     }
 
     @Test("Delegate is set on initialization")
-    func delegateIsSetOnInitialization() async throws {
+    func delegateIsSetOnInitialization() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         _ = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -305,7 +328,7 @@ struct NotificationSchedulerTests {
     }
 
     @Test("Authorization status returns correct value")
-    func authorizationStatusReturnsCorrectValue() async throws {
+    func authorizationStatusReturnsCorrectValue() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -321,7 +344,7 @@ struct NotificationSchedulerTests {
 @Suite("NotificationDelegate Tests")
 struct NotificationDelegateTests {
     @Test("Register stores handler for alert ID")
-    func registerStoresHandler() async throws {
+    func registerStoresHandler() async {
         let delegate = NotificationDelegate()
         let handlerCalled = SendableBox(false)
 
@@ -335,7 +358,7 @@ struct NotificationDelegateTests {
     }
 
     @Test("Handler is removed after firing")
-    func handlerIsRemovedAfterFiring() async throws {
+    func handlerIsRemovedAfterFiring() async {
         let delegate = NotificationDelegate()
         let callCount = SendableBox(0)
 
@@ -350,7 +373,7 @@ struct NotificationDelegateTests {
     }
 
     @Test("Unregister removes handler")
-    func unregisterRemovesHandler() async throws {
+    func unregisterRemovesHandler() async {
         let delegate = NotificationDelegate()
         let handlerCalled = SendableBox(false)
 
@@ -365,7 +388,7 @@ struct NotificationDelegateTests {
     }
 
     @Test("UnregisterAll removes all handlers")
-    func unregisterAllRemovesAllHandlers() async throws {
+    func unregisterAllRemovesAllHandlers() async {
         let delegate = NotificationDelegate()
         let count = SendableBox(0)
 
@@ -383,7 +406,7 @@ struct NotificationDelegateTests {
     }
 
     @Test("Firing unknown alert ID does nothing")
-    func firingUnknownAlertDoesNothing() async throws {
+    func firingUnknownAlertDoesNothing() async {
         let delegate = NotificationDelegate()
         // Should not throw or crash
         await delegate.testFireHandler(alertId: "nonexistent-alert")

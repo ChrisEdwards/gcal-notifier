@@ -189,18 +189,26 @@ public actor AlertEngine {
     /// Sets back-to-back context provider. Stage 1 alerts are downgraded to banners when user is in a meeting.
     public func setBackToBackContextProvider(
         _ provider: @escaping @Sendable (ScheduledAlert) async -> BackToBackAlertContext
-    ) { self.backToBackContextProvider = provider }
+    ) {
+        self.backToBackContextProvider = provider
+    }
 
     /// Clears the back-to-back context provider.
-    public func clearBackToBackContextProvider() { self.backToBackContextProvider = nil }
+    public func clearBackToBackContextProvider() {
+        self.backToBackContextProvider = nil
+    }
 
     /// Sets presentation mode provider for suppression during screen share/DND.
     public func setPresentationModeProvider(
         _ provider: @escaping @Sendable () async -> AlertDowngradeReason?
-    ) { self.presentationModeProvider = provider }
+    ) {
+        self.presentationModeProvider = provider
+    }
 
     /// Clears the presentation mode provider.
-    public func clearPresentationModeProvider() { self.presentationModeProvider = nil }
+    public func clearPresentationModeProvider() {
+        self.presentationModeProvider = nil
+    }
 
     // MARK: - Missed Alert Handling
 

@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifier
 @testable import GCalNotifierCore
 

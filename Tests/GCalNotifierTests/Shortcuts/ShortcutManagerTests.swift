@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifier
 @testable import GCalNotifierCore
 
@@ -276,7 +275,7 @@ struct TimeFormattingTests {
         #expect(result == expected)
     }
 
-    // Helper function that mimics the formatting logic
+    /// Helper function that mimics the formatting logic
     private func formatTimeUntilTest(minutes: Int, hours: Int) -> String {
         if hours > 0 {
             if minutes > 0 {

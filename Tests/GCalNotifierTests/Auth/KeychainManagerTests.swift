@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifierCore
 
 /// Tests for OAuthClientCredentials data structure.

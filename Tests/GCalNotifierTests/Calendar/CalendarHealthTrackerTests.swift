@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifierCore
 
 // MARK: - Test Errors
@@ -36,8 +35,13 @@ private actor MockHealthDelegate: CalendarHealthDelegate {
         self.changes.append(HealthChange(calendarId: calendarId, from: oldHealth, to: newHealth))
     }
 
-    func getChanges() -> [HealthChange] { self.changes }
-    func reset() { self.changes.removeAll() }
+    func getChanges() -> [HealthChange] {
+        self.changes
+    }
+
+    func reset() {
+        self.changes.removeAll()
+    }
 }
 
 // MARK: - Test Helpers

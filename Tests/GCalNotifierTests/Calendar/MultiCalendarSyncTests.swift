@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifierCore
 
 // MARK: - Test Errors
@@ -54,7 +53,9 @@ private actor MultiCalendarMockClient {
         return response
     }
 
-    func getFetchedCalendarIds() -> [String] { self.fetchedCalendarIds }
+    func getFetchedCalendarIds() -> [String] {
+        self.fetchedCalendarIds
+    }
 }
 
 // MARK: - Multi-Calendar Test Sync Engine

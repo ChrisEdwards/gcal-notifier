@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifierCore
 
 // MARK: - Mock Delegate
@@ -20,9 +19,17 @@ private actor MockTimeZoneDelegate: TimeZoneManagerDelegate {
         self.lastNewTimeZone = newTimeZone
     }
 
-    func getChangeCount() -> Int { self.changeCount }
-    func getLastOldTimeZone() -> TimeZone? { self.lastOldTimeZone }
-    func getLastNewTimeZone() -> TimeZone? { self.lastNewTimeZone }
+    func getChangeCount() -> Int {
+        self.changeCount
+    }
+
+    func getLastOldTimeZone() -> TimeZone? {
+        self.lastOldTimeZone
+    }
+
+    func getLastNewTimeZone() -> TimeZone? {
+        self.lastNewTimeZone
+    }
 }
 
 // MARK: - Tests
@@ -226,19 +233,16 @@ struct TimeZoneProviderTests {
     }
 
     @Test("MockTimeZoneProvider returns configured time zone")
-    func mockTimeZoneProviderReturnsConfiguredTimeZone() {
-        // swiftlint:disable:next force_unwrapping
-        let tokyo = TimeZone(identifier: "Asia/Tokyo")!
+    func mockTimeZoneProviderReturnsConfiguredTimeZone() throws {
+        let tokyo = try #require(TimeZone(identifier: "Asia/Tokyo"))
         let provider = MockTimeZoneProvider(timeZone: tokyo)
         #expect(provider.currentTimeZone == tokyo)
     }
 
     @Test("MockTimeZoneProvider setTimeZone updates current time zone")
-    func mockTimeZoneProviderSetTimeZoneUpdates() {
-        // swiftlint:disable:next force_unwrapping
-        let tokyo = TimeZone(identifier: "Asia/Tokyo")!
-        // swiftlint:disable:next force_unwrapping
-        let sydney = TimeZone(identifier: "Australia/Sydney")!
+    func mockTimeZoneProviderSetTimeZoneUpdates() throws {
+        let tokyo = try #require(TimeZone(identifier: "Asia/Tokyo"))
+        let sydney = try #require(TimeZone(identifier: "Australia/Sydney"))
 
         let provider = MockTimeZoneProvider(timeZone: tokyo)
         provider.setTimeZone(sydney)

@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifier
 
 // MARK: - Mock Delegate
@@ -29,13 +28,13 @@ private final class MockSleepWakeDelegate: SleepWakeHandlerDelegate {
 @MainActor
 struct SleepWakeHandlerTests {
     @Test("handler can be initialized")
-    func handlerCanBeInitialized() async {
+    func handlerCanBeInitialized() {
         let handler = SleepWakeHandler()
         #expect(handler != nil)
     }
 
     @Test("startMonitoring can be called")
-    func startMonitoringCanBeCalled() async {
+    func startMonitoringCanBeCalled() {
         let handler = SleepWakeHandler()
         handler.startMonitoring()
         // Clean up
@@ -43,14 +42,14 @@ struct SleepWakeHandlerTests {
     }
 
     @Test("stopMonitoring can be called without starting")
-    func stopMonitoringCanBeCalledWithoutStarting() async {
+    func stopMonitoringCanBeCalledWithoutStarting() {
         let handler = SleepWakeHandler()
         handler.stopMonitoring()
         // Should not crash
     }
 
     @Test("startMonitoring is idempotent")
-    func startMonitoringIsIdempotent() async {
+    func startMonitoringIsIdempotent() {
         let handler = SleepWakeHandler()
         handler.startMonitoring()
         handler.startMonitoring() // Should be no-op
@@ -58,7 +57,7 @@ struct SleepWakeHandlerTests {
     }
 
     @Test("stopMonitoring is idempotent")
-    func stopMonitoringIsIdempotent() async {
+    func stopMonitoringIsIdempotent() {
         let handler = SleepWakeHandler()
         handler.startMonitoring()
         handler.stopMonitoring()
@@ -66,7 +65,7 @@ struct SleepWakeHandlerTests {
     }
 
     @Test("delegate can be set")
-    func delegateCanBeSet() async {
+    func delegateCanBeSet() {
         let handler = SleepWakeHandler()
         let delegate = MockSleepWakeDelegate()
         handler.setDelegate(delegate)
@@ -74,7 +73,7 @@ struct SleepWakeHandlerTests {
     }
 
     @Test("delegate can be set to nil")
-    func delegateCanBeSetToNil() async {
+    func delegateCanBeSetToNil() {
         let handler = SleepWakeHandler()
         let delegate = MockSleepWakeDelegate()
         handler.setDelegate(delegate)

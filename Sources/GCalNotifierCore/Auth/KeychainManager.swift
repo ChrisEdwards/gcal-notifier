@@ -26,10 +26,14 @@ public struct OAuthTokens: Codable, Sendable, Equatable {
     }
 
     /// Whether the access token has expired.
-    public var isExpired: Bool { Date() >= self.expiresAt }
+    public var isExpired: Bool {
+        Date() >= self.expiresAt
+    }
 
     /// Time remaining until expiration (negative if already expired).
-    public var expiresIn: TimeInterval { self.expiresAt.timeIntervalSinceNow }
+    public var expiresIn: TimeInterval {
+        self.expiresAt.timeIntervalSinceNow
+    }
 }
 
 /// Combined OAuth data stored as a single Keychain item to minimize password prompts.

@@ -175,7 +175,6 @@ struct SoundsTab: View {
         .formStyle(.grouped)
     }
 
-    @ViewBuilder
     private var customSoundSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {

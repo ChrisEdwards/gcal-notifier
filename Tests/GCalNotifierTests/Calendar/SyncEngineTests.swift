@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifierCore
 
 // MARK: - Test Errors
@@ -57,8 +56,13 @@ private actor MockCalendarClient {
         return self.eventsResponses.removeFirst()
     }
 
-    func getCallCount() -> Int { self.fetchCallCount }
-    func getLastSyncToken() -> String? { self.lastSyncToken }
+    func getCallCount() -> Int {
+        self.fetchCallCount
+    }
+
+    func getLastSyncToken() -> String? {
+        self.lastSyncToken
+    }
 }
 
 // MARK: - Mock Google Calendar Client Wrapper
@@ -394,7 +398,7 @@ struct SyncEngineTests {
 @Suite("SyncEngine Polling Interval Tests")
 struct SyncEnginePollingIntervalTests {
     @Test("calculatePollingInterval returns normal when meeting is more than 10 minutes away")
-    func calculatePollingIntervalFarMeetingReturnsNormal() async throws {
+    func calculatePollingIntervalFarMeetingReturnsNormal() {
         let now = Date()
         let farEvent = makeEvent(startTime: now.addingTimeInterval(8000)) // ~2.2 hours
         let interval = self.calculatePollingInterval(events: [farEvent], now: now)
@@ -402,7 +406,7 @@ struct SyncEnginePollingIntervalTests {
     }
 
     @Test("calculatePollingInterval returns normal when meeting within 1 hour but more than 10 min")
-    func calculatePollingIntervalMeetingWithin1HourReturnsNormal() async throws {
+    func calculatePollingIntervalMeetingWithin1HourReturnsNormal() {
         let now = Date()
         let soonEvent = makeEvent(startTime: now.addingTimeInterval(2400)) // 40 minutes
         let interval = self.calculatePollingInterval(events: [soonEvent], now: now)
@@ -410,7 +414,7 @@ struct SyncEnginePollingIntervalTests {
     }
 
     @Test("calculatePollingInterval returns imminent when meeting within 10 minutes")
-    func calculatePollingIntervalMeetingWithin10MinReturnsImminent() async throws {
+    func calculatePollingIntervalMeetingWithin10MinReturnsImminent() {
         let now = Date()
         let imminentEvent = makeEvent(startTime: now.addingTimeInterval(300)) // 5 minutes
         let interval = self.calculatePollingInterval(events: [imminentEvent], now: now)
@@ -418,13 +422,13 @@ struct SyncEnginePollingIntervalTests {
     }
 
     @Test("calculatePollingInterval returns normal when no events")
-    func calculatePollingIntervalNoEventsReturnsNormal() async throws {
+    func calculatePollingIntervalNoEventsReturnsNormal() {
         let interval = self.calculatePollingInterval(events: [], now: Date())
         #expect(interval == .normal)
     }
 
     @Test("calculatePollingInterval ignores past events")
-    func calculatePollingIntervalIgnoresPastEvents() async throws {
+    func calculatePollingIntervalIgnoresPastEvents() {
         let now = Date()
         let pastEvent = makeEvent(startTime: now.addingTimeInterval(-3600)) // 1 hour ago
         let interval = self.calculatePollingInterval(events: [pastEvent], now: now)
@@ -432,7 +436,7 @@ struct SyncEnginePollingIntervalTests {
     }
 
     @Test("calculatePollingInterval uses earliest upcoming event")
-    func calculatePollingIntervalUsesEarliestEvent() async throws {
+    func calculatePollingIntervalUsesEarliestEvent() {
         let now = Date()
         let farEvent = makeEvent(id: "far", startTime: now.addingTimeInterval(7200)) // 2 hours
         let nearEvent = makeEvent(id: "near", startTime: now.addingTimeInterval(300)) // 5 minutes
@@ -440,7 +444,7 @@ struct SyncEnginePollingIntervalTests {
         #expect(interval == .imminent)
     }
 
-    // Helper function to match SyncEngine's calculation logic
+    /// Helper function to match SyncEngine's calculation logic
     private func calculatePollingInterval(events: [CalendarEvent], now: Date) -> PollingInterval {
         let upcomingEvents = events.filter { $0.startTime > now }
 

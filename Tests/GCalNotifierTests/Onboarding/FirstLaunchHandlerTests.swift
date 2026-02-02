@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-
 @testable import GCalNotifier
 @testable import GCalNotifierCore
 
@@ -41,7 +40,7 @@ private final class MockFirstLaunchDelegate: FirstLaunchHandlerDelegate {
 @Suite("FirstLaunchHandler Tests")
 @MainActor
 struct FirstLaunchHandlerTests {
-    // Create a unique suite name for isolated defaults
+    /// Create a unique suite name for isolated defaults
     private func createIsolatedDefaults() -> UserDefaults {
         let suiteName = "FirstLaunchHandlerTests-\(UUID().uuidString)"
         // swiftlint:disable:next force_unwrapping
@@ -51,7 +50,7 @@ struct FirstLaunchHandlerTests {
     // MARK: - Initialization
 
     @Test("handler can be initialized")
-    func handlerCanBeInitialized() async {
+    func handlerCanBeInitialized() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
         #expect(handler != nil)
@@ -60,7 +59,7 @@ struct FirstLaunchHandlerTests {
     // MARK: - First Launch Detection
 
     @Test("isFirstLaunch returns true on fresh install")
-    func isFirstLaunchReturnsTrueOnFreshInstall() async {
+    func isFirstLaunchReturnsTrueOnFreshInstall() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -68,7 +67,7 @@ struct FirstLaunchHandlerTests {
     }
 
     @Test("isFirstLaunch returns false after markLaunched")
-    func isFirstLaunchReturnsFalseAfterMarkLaunched() async {
+    func isFirstLaunchReturnsFalseAfterMarkLaunched() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -78,7 +77,7 @@ struct FirstLaunchHandlerTests {
     }
 
     @Test("isSetupCompleted returns false initially")
-    func isSetupCompletedReturnsFalseInitially() async {
+    func isSetupCompletedReturnsFalseInitially() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -86,7 +85,7 @@ struct FirstLaunchHandlerTests {
     }
 
     @Test("isSetupCompleted returns true after markSetupCompleted")
-    func isSetupCompletedReturnsTrueAfterMark() async {
+    func isSetupCompletedReturnsTrueAfterMark() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -96,7 +95,7 @@ struct FirstLaunchHandlerTests {
     }
 
     @Test("isSetupRequired returns true on fresh install")
-    func isSetupRequiredReturnsTrueOnFreshInstall() async {
+    func isSetupRequiredReturnsTrueOnFreshInstall() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -104,7 +103,7 @@ struct FirstLaunchHandlerTests {
     }
 
     @Test("isSetupRequired returns true after launched but before setup completed")
-    func isSetupRequiredReturnsTrueAfterLaunchedBeforeSetup() async {
+    func isSetupRequiredReturnsTrueAfterLaunchedBeforeSetup() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -114,7 +113,7 @@ struct FirstLaunchHandlerTests {
     }
 
     @Test("isSetupRequired returns false after setup completed")
-    func isSetupRequiredReturnsFalseAfterSetupCompleted() async {
+    func isSetupRequiredReturnsFalseAfterSetupCompleted() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -231,7 +230,7 @@ struct FirstLaunchHandlerTests {
     // MARK: - Reset State
 
     @Test("resetFirstLaunchState clears hasLaunched")
-    func resetFirstLaunchStateClearsHasLaunched() async {
+    func resetFirstLaunchStateClearsHasLaunched() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -244,7 +243,7 @@ struct FirstLaunchHandlerTests {
     }
 
     @Test("resetFirstLaunchState clears setupCompleted")
-    func resetFirstLaunchStateClearsSetupCompleted() async {
+    func resetFirstLaunchStateClearsSetupCompleted() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
 
@@ -259,7 +258,7 @@ struct FirstLaunchHandlerTests {
     // MARK: - Delegate Management
 
     @Test("delegate can be set")
-    func delegateCanBeSet() async {
+    func delegateCanBeSet() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
         let delegate = MockFirstLaunchDelegate()
@@ -268,7 +267,7 @@ struct FirstLaunchHandlerTests {
     }
 
     @Test("delegate can be set to nil")
-    func delegateCanBeSetToNil() async {
+    func delegateCanBeSetToNil() {
         let defaults = self.createIsolatedDefaults()
         let handler = FirstLaunchHandler(defaults: defaults)
         let delegate = MockFirstLaunchDelegate()

@@ -1,5 +1,4 @@
 import Testing
-
 @testable import GCalNotifierCore
 
 /// Tests for CalendarError enum and its properties.
