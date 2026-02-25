@@ -11,10 +11,12 @@ public final class MenuController: NSObject {
     // MARK: - Dependencies
 
     private var eventCache: EventCache?
+    private var eventFilter: EventFilter?
 
     // MARK: - State
 
     private var events: [CalendarEvent] = []
+    private var alertableEvents: [CalendarEvent] = []
     private var conflictingEventIds: Set<String> = []
     private var notificationPermissionDenied: Bool = false
     private var setupRequired: Bool = false
@@ -32,9 +34,15 @@ public final class MenuController: NSObject {
     // MARK: - Configuration
 
     /// Configures the menu controller with its dependencies.
-    /// - Parameter eventCache: The event cache to load events from.
-    public func configure(eventCache: EventCache) {
+    /// - Parameters:
+    ///   - eventCache: The event cache to load events from.
+    ///   - settings: Settings store for filtering alertable meetings.
+    public func configure(eventCache: EventCache, settings: SettingsStore? = nil) {
         self.eventCache = eventCache
+        if let settings {
+            self.eventFilter = EventFilter(settings: settings)
+        }
+        self.alertableEvents = self.filteredAlertableEvents(from: self.events)
     }
 
     // MARK: - Public API
@@ -51,7 +59,8 @@ public final class MenuController: NSObject {
         do {
             let todaysEvents = try await eventCache.events(from: startOfDay, to: endOfDay)
             self.events = todaysEvents
-            self.conflictingEventIds = Self.detectConflicts(in: todaysEvents)
+            self.alertableEvents = self.filteredAlertableEvents(from: todaysEvents)
+            self.conflictingEventIds = Self.detectConflicts(in: self.alertableEvents)
         } catch {
             // Log error but continue with existing events
             // Menu will show whatever state it had before
@@ -61,6 +70,7 @@ public final class MenuController: NSObject {
     /// Updates the events to display.
     public func updateEvents(_ events: [CalendarEvent]) {
         self.events = events
+        self.alertableEvents = self.filteredAlertableEvents(from: events)
     }
 
     /// Updates the set of conflicting event IDs.
@@ -84,7 +94,8 @@ public final class MenuController: NSObject {
             events: self.events,
             conflictingEventIds: self.conflictingEventIds,
             notificationPermissionDenied: self.notificationPermissionDenied,
-            setupRequired: self.setupRequired
+            setupRequired: self.setupRequired,
+            alertableEvents: self.alertableEvents
         )
         return self.createMenu(from: menuItems)
     }
@@ -111,6 +122,11 @@ public final class MenuController: NSObject {
             ids.insert(pair.second.qualifiedId)
         }
         return ids
+    }
+
+    private func filteredAlertableEvents(from events: [CalendarEvent]) -> [CalendarEvent] {
+        guard let eventFilter else { return events }
+        return events.filter { eventFilter.shouldAlert(for: $0) }
     }
 
     private func createNSMenuItem(from item: MenuBuilder.MenuItem) -> NSMenuItem {

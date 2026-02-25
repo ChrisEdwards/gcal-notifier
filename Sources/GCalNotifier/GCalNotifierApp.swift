@@ -268,7 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Configure with EventCache if available
         if let eventCache {
-            menuController.configure(eventCache: eventCache)
+            menuController.configure(eventCache: eventCache, settings: self.settingsStore)
         }
 
         self.menuController = menuController

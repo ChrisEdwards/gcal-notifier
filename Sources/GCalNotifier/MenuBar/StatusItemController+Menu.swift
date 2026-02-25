@@ -56,7 +56,8 @@ public enum MenuBuilder {
         conflictingEventIds: Set<String>,
         notificationPermissionDenied: Bool = false,
         setupRequired: Bool = false,
-        now: Date = Date()
+        now: Date = Date(),
+        alertableEvents: [CalendarEvent]? = nil
     ) -> [MenuItem] {
         // If setup is required, show simplified menu
         if setupRequired {
@@ -72,7 +73,9 @@ public enum MenuBuilder {
         }
 
         let todaysEvents = Self.filterTodaysEvents(events, now: now)
-        let nextMeeting = Self.findNextMeeting(from: todaysEvents, now: now)
+        let alertableSource = alertableEvents ?? events
+        let alertableToday = Self.filterTodaysEvents(alertableSource, now: now)
+        let nextMeeting = Self.findNextMeeting(from: alertableToday, now: now)
 
         // Quick join section
         if let next = nextMeeting {
@@ -81,7 +84,7 @@ public enum MenuBuilder {
         }
 
         // Conflict warning
-        let conflicts = Self.findConflictingPairs(in: todaysEvents, conflictingIds: conflictingEventIds)
+        let conflicts = Self.findConflictingPairs(in: alertableToday, conflictingIds: conflictingEventIds)
         if let firstConflict = conflicts.first {
             let timeString = Self.formatTime(firstConflict.startTime)
             items.append(.conflictWarning(time: timeString, count: conflicts.count))

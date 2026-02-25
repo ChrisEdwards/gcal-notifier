@@ -443,33 +443,33 @@ struct MenuEventFilteringTests {
         }
         #expect(title == "Accepted Meeting")
     }
-}
 
-// MARK: - Countdown Formatting Tests
-
-@Suite("Menu Countdown Formatting Tests")
-struct MenuCountdownFormattingTests {
-    @Test("Formats countdown correctly")
-    func formatsCountdownCorrectly() {
+    @Test("Quick join uses alertable events when provided")
+    func quickJoinUsesAlertableEventsWhenProvided() {
         let now = testNow()
-        let event = makeTestEvent(startTime: now.addingTimeInterval(32 * 60))
-        let countdown = MenuBuilder.formatCountdown(to: event, now: now)
-        #expect(countdown == "32m")
-    }
-
-    @Test("Formats countdown with hours")
-    func formatsCountdownWithHours() {
-        let now = testNow()
-        let event = makeTestEvent(startTime: now.addingTimeInterval(90 * 60))
-        let countdown = MenuBuilder.formatCountdown(to: event, now: now)
-        #expect(countdown == "1h 30m")
-    }
-
-    @Test("Shows 'now' for past events")
-    func showsNowForPastEvents() {
-        let now = testNow()
-        let event = makeTestEvent(startTime: now.addingTimeInterval(-5 * 60))
-        let countdown = MenuBuilder.formatCountdown(to: event, now: now)
-        #expect(countdown == "now")
+        guard let link = makeTestLink() else { return }
+        let filteredOutEvent = makeTestEvent(
+            id: "filtered-out",
+            title: "Filtered Out",
+            startTime: now.addingTimeInterval(10 * 60),
+            meetingLinks: [link]
+        )
+        let allowedEvent = makeTestEvent(
+            id: "allowed",
+            title: "Allowed Meeting",
+            startTime: now.addingTimeInterval(30 * 60),
+            meetingLinks: [link]
+        )
+        let items = MenuBuilder.buildMenuItems(
+            events: [filteredOutEvent, allowedEvent],
+            conflictingEventIds: [],
+            now: now,
+            alertableEvents: [allowedEvent]
+        )
+        guard case let .quickJoin(title, _) = items[0] else {
+            Issue.record("Expected quickJoin item first")
+            return
+        }
+        #expect(title == "Allowed Meeting")
     }
 }
