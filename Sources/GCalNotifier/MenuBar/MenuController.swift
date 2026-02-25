@@ -51,6 +51,7 @@ public final class MenuController: NSObject {
         do {
             let todaysEvents = try await eventCache.events(from: startOfDay, to: endOfDay)
             self.events = todaysEvents
+            self.conflictingEventIds = Self.detectConflicts(in: todaysEvents)
         } catch {
             // Log error but continue with existing events
             // Menu will show whatever state it had before
@@ -99,6 +100,17 @@ public final class MenuController: NSObject {
         }
 
         return menu
+    }
+
+    private static func detectConflicts(in events: [CalendarEvent]) -> Set<String> {
+        let detector = ConflictDetector()
+        let conflicts = detector.findConflicts(in: events)
+        var ids: Set<String> = []
+        for pair in conflicts {
+            ids.insert(pair.first.qualifiedId)
+            ids.insert(pair.second.qualifiedId)
+        }
+        return ids
     }
 
     private func createNSMenuItem(from item: MenuBuilder.MenuItem) -> NSMenuItem {

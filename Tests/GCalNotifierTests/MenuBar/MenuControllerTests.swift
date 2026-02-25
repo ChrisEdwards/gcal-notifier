@@ -135,6 +135,48 @@ struct MenuControllerEventCacheTests {
         #expect(menu.items.count > 0)
     }
 
+    @Test("loadEventsFromCache computes conflicts for overlapping events")
+    func loadEventsFromCacheComputesConflicts() async throws {
+        let fileURL = makeTempFileURL()
+        defer { cleanupTempDir(fileURL) }
+
+        let cache = EventCache(fileURL: fileURL)
+
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfDay = calendar.startOfDay(for: now)
+
+        guard let link = makeTestLink() else {
+            Issue.record("Failed to create test link")
+            return
+        }
+
+        let event1 = makeTestEvent(
+            id: "conflict-1",
+            startTime: startOfDay.addingTimeInterval(10 * 3600),
+            endTime: startOfDay.addingTimeInterval(11 * 3600),
+            meetingLinks: [link]
+        )
+        let event2 = makeTestEvent(
+            id: "conflict-2",
+            startTime: startOfDay.addingTimeInterval(10 * 3600 + 30 * 60),
+            endTime: startOfDay.addingTimeInterval(11 * 3600 + 30 * 60),
+            meetingLinks: [link]
+        )
+
+        try await cache.save([event1, event2])
+
+        let menuController = MenuController()
+        menuController.configure(eventCache: cache)
+        menuController.updateSetupRequired(false)
+
+        await menuController.loadEventsFromCache()
+
+        let menu = menuController.buildMenu()
+        let hasConflictWarning = menu.items.contains { $0.title.contains("Conflict") }
+        #expect(hasConflictWarning)
+    }
+
     @Test("loadEventsFromCache without configuration does nothing")
     func loadEventsFromCacheWithoutConfigurationDoesNothing() async {
         let menuController = MenuController()
