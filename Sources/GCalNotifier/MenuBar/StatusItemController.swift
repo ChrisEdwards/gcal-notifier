@@ -62,7 +62,7 @@ public enum StatusItemLogic {
     /// Find the next meeting from a list of events.
     public static func findNextMeeting(from events: [CalendarEvent], now: Date = Date()) -> CalendarEvent? {
         events
-            .filter { !$0.isAllDay && $0.startTime > now }
+            .filter { $0.startTime > now && $0.shouldAlert }
             .sorted { $0.startTime < $1.startTime }
             .first
     }

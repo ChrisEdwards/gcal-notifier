@@ -34,6 +34,12 @@ private func makeTestEvent(
     )
 }
 
+/// Creates a MeetingLink for testing.
+private func makeTestLink(urlString: String = "https://meet.google.com/abc-defg-hij") -> MeetingLink? {
+    guard let url = URL(string: urlString) else { return nil }
+    return MeetingLink(url: url)
+}
+
 // MARK: - StatusItemState Tests
 
 @Suite("StatusItemState Tests")
@@ -170,8 +176,17 @@ struct EventFilteringTests {
     @Test("Picks the soonest future event as next meeting")
     func picksSoonestFutureEvent() {
         let now = Date()
-        let soonEvent = makeTestEvent(id: "soon", startTime: now.addingTimeInterval(30 * 60))
-        let laterEvent = makeTestEvent(id: "later", startTime: now.addingTimeInterval(90 * 60))
+        guard let link = makeTestLink() else { return }
+        let soonEvent = makeTestEvent(
+            id: "soon",
+            startTime: now.addingTimeInterval(30 * 60),
+            meetingLinks: [link]
+        )
+        let laterEvent = makeTestEvent(
+            id: "later",
+            startTime: now.addingTimeInterval(90 * 60),
+            meetingLinks: [link]
+        )
 
         let next = StatusItemLogic.findNextMeeting(from: [laterEvent, soonEvent], now: now)
 
@@ -181,8 +196,13 @@ struct EventFilteringTests {
     @Test("Ignores all-day events")
     func ignoresAllDayEvents() {
         let now = Date()
+        guard let link = makeTestLink() else { return }
         let allDayEvent = makeTestEvent(id: "all-day", startTime: now.addingTimeInterval(10 * 60), isAllDay: true)
-        let regularEvent = makeTestEvent(id: "regular", startTime: now.addingTimeInterval(90 * 60))
+        let regularEvent = makeTestEvent(
+            id: "regular",
+            startTime: now.addingTimeInterval(90 * 60),
+            meetingLinks: [link]
+        )
 
         let next = StatusItemLogic.findNextMeeting(from: [allDayEvent, regularEvent], now: now)
 
@@ -192,8 +212,13 @@ struct EventFilteringTests {
     @Test("Ignores past events")
     func ignoresPastEvents() {
         let now = Date()
+        guard let link = makeTestLink() else { return }
         let pastEvent = makeTestEvent(id: "past", startTime: now.addingTimeInterval(-30 * 60))
-        let futureEvent = makeTestEvent(id: "future", startTime: now.addingTimeInterval(90 * 60))
+        let futureEvent = makeTestEvent(
+            id: "future",
+            startTime: now.addingTimeInterval(90 * 60),
+            meetingLinks: [link]
+        )
 
         let next = StatusItemLogic.findNextMeeting(from: [pastEvent, futureEvent], now: now)
 
@@ -203,8 +228,17 @@ struct EventFilteringTests {
     @Test("Returns nil when all events are past")
     func noNextMeetingWhenAllPast() {
         let now = Date()
-        let pastEvent1 = makeTestEvent(id: "past1", startTime: now.addingTimeInterval(-60 * 60))
-        let pastEvent2 = makeTestEvent(id: "past2", startTime: now.addingTimeInterval(-30 * 60))
+        guard let link = makeTestLink() else { return }
+        let pastEvent1 = makeTestEvent(
+            id: "past1",
+            startTime: now.addingTimeInterval(-60 * 60),
+            meetingLinks: [link]
+        )
+        let pastEvent2 = makeTestEvent(
+            id: "past2",
+            startTime: now.addingTimeInterval(-30 * 60),
+            meetingLinks: [link]
+        )
 
         let next = StatusItemLogic.findNextMeeting(from: [pastEvent1, pastEvent2], now: now)
 
@@ -214,6 +248,14 @@ struct EventFilteringTests {
     @Test("Returns nil for empty events list")
     func noNextMeetingWhenEmpty() {
         let next = StatusItemLogic.findNextMeeting(from: [])
+        #expect(next == nil)
+    }
+
+    @Test("Ignores events without meeting links")
+    func ignoresEventsWithoutMeetingLinks() {
+        let now = Date()
+        let noLinkEvent = makeTestEvent(id: "no-link", startTime: now.addingTimeInterval(30 * 60))
+        let next = StatusItemLogic.findNextMeeting(from: [noLinkEvent], now: now)
         #expect(next == nil)
     }
 }
