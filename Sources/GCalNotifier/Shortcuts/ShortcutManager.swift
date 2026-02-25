@@ -144,7 +144,10 @@ public final class ShortcutManager {
         }
 
         do {
-            guard let nextMeeting = try await findNextMeetingWithVideoLink(in: eventCache) else {
+            guard let nextMeeting = try await findNextMeetingWithVideoLink(
+                in: eventCache,
+                settings: self.settings
+            ) else {
                 self.showNotification(
                     title: "No Upcoming Meetings",
                     body: "No meetings with video links in the next 24 hours"
@@ -168,13 +171,24 @@ public final class ShortcutManager {
         }
     }
 
-    func findNextMeetingWithVideoLink(in cache: EventCache) async throws -> CalendarEvent? {
+    func findNextMeetingWithVideoLink(
+        in cache: EventCache,
+        settings: SettingsStore? = nil
+    ) async throws -> CalendarEvent? {
         let now = Date()
         let endOfDay = now.addingTimeInterval(24 * 60 * 60)
 
         let events = try await cache.events(from: now, to: endOfDay)
+        let filter = settings.map { EventFilter(settings: $0) }
         return events
-            .filter { $0.shouldAlert && $0.startTime > now }
+            .filter { event in
+                guard event.startTime > now else { return false }
+                guard !event.meetingLinks.isEmpty else { return false }
+                if let filter {
+                    return filter.shouldAlert(for: event)
+                }
+                return event.shouldAlert
+            }
             .sorted { $0.startTime < $1.startTime }
             .first
     }
