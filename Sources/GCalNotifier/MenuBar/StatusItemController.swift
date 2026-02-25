@@ -162,6 +162,7 @@ public final class StatusItemController: NSObject {
     // MARK: - Data Source
 
     private var eventCache: EventCache?
+    private var eventFilter: EventFilter?
 
     // MARK: - State
 
@@ -203,8 +204,11 @@ public final class StatusItemController: NSObject {
 
     /// Configure the controller with an EventCache to load events from.
     /// Call this after initialization to enable automatic event loading.
-    public func configure(eventCache: EventCache) {
+    public func configure(eventCache: EventCache, settings: SettingsStore? = nil) {
         self.eventCache = eventCache
+        if let settings {
+            self.eventFilter = EventFilter(settings: settings)
+        }
 
         // Load events immediately from cache
         Task {
@@ -393,7 +397,10 @@ extension StatusItemController {
 
         do {
             let cachedEvents = try await eventCache.load()
-            self.updateEvents(cachedEvents)
+            let filteredEvents = self.eventFilter.map { filter in
+                cachedEvents.filter { filter.shouldAlert(for: $0) }
+            } ?? cachedEvents
+            self.updateEvents(filteredEvents)
         } catch {
             // Cache load failed - keep existing events, don't clear display
             // The display will show stale data until next successful load

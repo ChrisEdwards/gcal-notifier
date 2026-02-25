@@ -287,7 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Configure with EventCache if available for countdown display
         if let eventCache {
-            statusItemController.configure(eventCache: eventCache)
+            statusItemController.configure(eventCache: eventCache, settings: self.settingsStore)
         }
 
         self.statusItemController = statusItemController
