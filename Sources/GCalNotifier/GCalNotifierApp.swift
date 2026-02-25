@@ -197,6 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try await self.oauthProvider.loadStoredCredentials()
                 let state = await self.oauthProvider.state
                 Logger.app.info("OAuth state after loading credentials: \(String(describing: state))")
+                self.lastKnownAuthState = state
                 if state.canMakeApiCalls {
                     await self.handleAuthenticationCompleted()
                 }
