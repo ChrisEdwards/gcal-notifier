@@ -215,6 +215,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if currentState.canMakeApiCalls, !self.lastKnownAuthState.canMakeApiCalls {
                     Logger.app.info("Auth state transitioned to authenticated, starting sync")
                     await self.handleAuthenticationCompleted()
+                } else if !currentState.canMakeApiCalls, self.lastKnownAuthState.canMakeApiCalls {
+                    Logger.app.info("Auth state transitioned to unauthenticated, stopping sync")
+                    self.menuController?.updateSetupRequired(true)
+                    self.stopSyncPolling()
                 }
 
                 self.lastKnownAuthState = currentState
