@@ -244,8 +244,12 @@ public extension BackToBackState {
     ///   - events: All calendar events to consider.
     ///   - now: The current time (defaults to now).
     /// - Returns: The detected back-to-back state.
-    static func detect(from events: [CalendarEvent], now: Date = Date()) -> BackToBackState {
-        let alertableEvents = events.filter(\.shouldAlert)
+    static func detect(
+        from events: [CalendarEvent],
+        now: Date = Date(),
+        assumeFiltered: Bool = false
+    ) -> BackToBackState {
+        let alertableEvents = assumeFiltered ? events : events.filter(\.shouldAlert)
 
         // Find the current meeting (user is in an alertable meeting)
         let currentMeeting = alertableEvents.first { event in

@@ -258,6 +258,14 @@ struct EventFilteringTests {
         let next = StatusItemLogic.findNextMeeting(from: [noLinkEvent], now: now)
         #expect(next == nil)
     }
+
+    @Test("Uses pre-filtered events when assumeFiltered is true")
+    func usesPrefilteredEvents() {
+        let now = Date()
+        let noLinkEvent = makeTestEvent(id: "no-link", startTime: now.addingTimeInterval(30 * 60))
+        let next = StatusItemLogic.findNextMeeting(from: [noLinkEvent], now: now, assumeFiltered: true)
+        #expect(next?.id == "no-link")
+    }
 }
 
 // MARK: - Icon Determination Tests

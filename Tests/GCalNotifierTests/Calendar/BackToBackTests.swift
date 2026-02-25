@@ -293,6 +293,27 @@ struct BackToBackStateTests {
         #expect(state == .none)
     }
 
+    @Test("AssumeFiltered includes meetings without video links")
+    func assumeFilteredIncludesNoLinkMeetings() {
+        let now = Date()
+        let current = makeEvent(
+            id: "current",
+            startTime: now.addingTimeInterval(-900),
+            endTime: now.addingTimeInterval(900),
+            meetingLinks: []
+        )
+        let next = makeEvent(
+            id: "next",
+            startTime: now.addingTimeInterval(900),
+            endTime: now.addingTimeInterval(3600),
+            meetingLinks: []
+        )
+
+        let state = BackToBackState.detect(from: [current, next], now: now, assumeFiltered: true)
+
+        #expect(state.isBackToBack == true)
+    }
+
     @Test("none state has nil meetings")
     func noneStateHasNilMeetings() {
         let state = BackToBackState.none

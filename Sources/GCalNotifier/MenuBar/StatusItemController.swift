@@ -60,9 +60,15 @@ public enum StatusItemLogic {
     }
 
     /// Find the next meeting from a list of events.
-    public static func findNextMeeting(from events: [CalendarEvent], now: Date = Date()) -> CalendarEvent? {
-        events
-            .filter { $0.startTime > now && $0.shouldAlert }
+    /// - Parameter assumeFiltered: When true, events are assumed already filtered by settings.
+    public static func findNextMeeting(
+        from events: [CalendarEvent],
+        now: Date = Date(),
+        assumeFiltered: Bool = false
+    ) -> CalendarEvent? {
+        let candidates = assumeFiltered ? events : events.filter(\.shouldAlert)
+        return candidates
+            .filter { $0.startTime > now }
             .sorted { $0.startTime < $1.startTime }
             .first
     }
@@ -237,9 +243,17 @@ public final class StatusItemController: NSObject {
 
     /// Update the events list and recalculate next meeting and back-to-back state
     public func updateEvents(_ events: [CalendarEvent]) {
-        self.events = events
-        self.nextMeeting = StatusItemLogic.findNextMeeting(from: events)
-        self.backToBackState = BackToBackState.detect(from: events)
+        let filteredEvents = self.filteredEvents(from: events)
+        let assumeFiltered = self.eventFilter != nil
+        self.events = filteredEvents
+        self.nextMeeting = StatusItemLogic.findNextMeeting(
+            from: filteredEvents,
+            assumeFiltered: assumeFiltered
+        )
+        self.backToBackState = BackToBackState.detect(
+            from: filteredEvents,
+            assumeFiltered: assumeFiltered
+        )
         updateDisplay()
         scheduleNextUpdate()
     }
@@ -397,14 +411,22 @@ extension StatusItemController {
 
         do {
             let cachedEvents = try await eventCache.load()
-            let filteredEvents = self.eventFilter.map { filter in
-                cachedEvents.filter { filter.shouldAlert(for: $0) }
-            } ?? cachedEvents
-            self.updateEvents(filteredEvents)
+            self.updateEvents(cachedEvents)
         } catch {
             // Cache load failed - keep existing events, don't clear display
             // The display will show stale data until next successful load
         }
+    }
+}
+
+// MARK: - Event Filtering
+
+private extension StatusItemController {
+    func filteredEvents(from events: [CalendarEvent]) -> [CalendarEvent] {
+        guard let eventFilter = self.eventFilter else {
+            return events
+        }
+        return events.filter { eventFilter.shouldAlert(for: $0) }
     }
 }
 
