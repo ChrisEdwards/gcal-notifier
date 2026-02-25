@@ -200,10 +200,11 @@ public actor GoogleOAuthProvider: OAuthProvider {
             credentials: credentials
         )
 
+        let refreshToken = try await self.resolveRefreshToken(from: tokenResponse)
         let expiresAt = Date().addingTimeInterval(TimeInterval(tokenResponse.expiresIn))
         return OAuthTokens(
             accessToken: tokenResponse.accessToken,
-            refreshToken: tokenResponse.refreshToken ?? "",
+            refreshToken: refreshToken,
             expiresAt: expiresAt
         )
     }
@@ -261,6 +262,24 @@ public actor GoogleOAuthProvider: OAuthProvider {
 
         try await self.keychainManager.saveOAuthData(OAuthData(credentials: credentials, tokens: newTokens))
         return newTokens
+    }
+
+    private func resolveRefreshToken(from tokenResponse: TokenResponse) async throws -> String {
+        if let refreshToken = tokenResponse.refreshToken, !refreshToken.isEmpty {
+            return refreshToken
+        }
+
+        if let existing = self.tokens?.refreshToken, !existing.isEmpty {
+            return existing
+        }
+
+        if let stored = try? await self.keychainManager.loadTokens(),
+           !stored.refreshToken.isEmpty
+        {
+            return stored.refreshToken
+        }
+
+        throw OAuthError.authenticationFailed("No refresh token received")
     }
 
     private func executeTokenRequest(bodyParams: [String: String], isRefresh: Bool) async throws -> TokenResponse {

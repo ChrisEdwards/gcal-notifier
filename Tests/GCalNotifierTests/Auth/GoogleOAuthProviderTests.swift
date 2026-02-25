@@ -12,7 +12,7 @@ struct TestContext {
     let callbackServer: MockCallbackServer
 }
 
-private func makeTestContext() async -> TestContext {
+func makeTestContext() async -> TestContext {
     let testService = "com.gcal-notifier.auth.tests.\(ProcessInfo.processInfo.processIdentifier).\(UUID().uuidString)"
     let keychainManager = KeychainManager(service: testService)
     let httpClient = MockHTTPClient()
@@ -43,11 +43,11 @@ private func makeTestContext() async -> TestContext {
     )
 }
 
-private func cleanup(_ keychainManager: KeychainManager) async {
+func cleanup(_ keychainManager: KeychainManager) async {
     try? await keychainManager.deleteAll()
 }
 
-private func makeTokenResponseJSON(
+func makeTokenResponseJSON(
     accessToken: String = "test-access-token",
     refreshToken: String? = "test-refresh-token",
     expiresIn: Int = 3600
