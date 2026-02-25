@@ -4,9 +4,10 @@ import Foundation
 ///
 /// Events must pass ALL filter checks:
 /// 1. Not an all-day event
-/// 2. Has meeting link OR contains force-alert keyword
-/// 3. Calendar is enabled (empty enabledCalendars = all calendars)
-/// 4. Does not contain blocked keywords
+/// 2. Not declined by the user
+/// 3. Has meeting link OR contains force-alert keyword
+/// 4. Calendar is enabled (empty enabledCalendars = all calendars)
+/// 5. Does not contain blocked keywords
 ///
 /// Keyword matching is case-insensitive substring matching against title and location.
 public struct EventFilter: Sendable {
@@ -21,15 +22,18 @@ public struct EventFilter: Sendable {
         // 1. All-day events never alert
         guard !event.isAllDay else { return false }
 
-        // 2. Must have meeting link OR force-alert keyword
+        // 2. Declined events never alert
+        guard event.responseStatus != .declined else { return false }
+
+        // 3. Must have meeting link OR force-alert keyword
         let hasMeetingLink = !event.meetingLinks.isEmpty
         let hasForceKeyword = self.containsForceAlertKeyword(event)
         guard hasMeetingLink || hasForceKeyword else { return false }
 
-        // 3. Calendar must be enabled (empty = all enabled)
+        // 4. Calendar must be enabled (empty = all enabled)
         guard self.isCalendarEnabled(event.calendarId) else { return false }
 
-        // 4. No blocked keywords (blocked overrides force-alert)
+        // 5. No blocked keywords (blocked overrides force-alert)
         guard !self.containsBlockedKeyword(event) else { return false }
 
         return true

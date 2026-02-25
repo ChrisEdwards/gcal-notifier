@@ -84,6 +84,21 @@ struct EventFilterMeetingLinkTests {
     }
 }
 
+// MARK: - Response Status Tests
+
+@Suite("EventFilter Response Status Tests")
+struct EventFilterResponseStatusTests {
+    @Test("Declined events never alert even with meeting links")
+    func declinedEvent_fails() throws {
+        let meetingURL = try #require(TestURLs.googleMeet)
+        let meetingLink = MeetingLink(url: meetingURL)
+        let event = makeEvent(meetingLinks: [meetingLink], responseStatus: .declined)
+        let filter = makeFilter()
+
+        #expect(filter.shouldAlert(for: event) == false)
+    }
+}
+
 // MARK: - Calendar Enable/Disable Tests
 
 @Suite("EventFilter Calendar Tests")
