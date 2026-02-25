@@ -199,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Logger.app.info("OAuth state after loading credentials: \(String(describing: state))")
                 self.lastKnownAuthState = state
                 if state.canMakeApiCalls {
-                    await self.handleAuthenticationCompleted()
+                    await self.handleAuthenticationCompleted(showSetupCompletion: false)
                 }
             } catch {
                 Logger.app.error("Failed to load OAuth credentials: \(error.localizedDescription)")
@@ -223,7 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Detect transition to authenticated state
                 if currentState.canMakeApiCalls, !self.lastKnownAuthState.canMakeApiCalls {
                     Logger.app.info("Auth state transitioned to authenticated, starting sync")
-                    await self.handleAuthenticationCompleted()
+                    await self.handleAuthenticationCompleted(showSetupCompletion: true)
                 } else if !currentState.canMakeApiCalls, self.lastKnownAuthState.canMakeApiCalls {
                     Logger.app.info("Auth state transitioned to unauthenticated, stopping sync")
                     await self.handleAuthenticationRevoked()
@@ -362,7 +362,7 @@ extension AppDelegate {
     }
 
     /// Called when authentication completes successfully - triggers initial sync and starts polling.
-    func handleAuthenticationCompleted() async {
+    func handleAuthenticationCompleted(showSetupCompletion: Bool = false) async {
         guard self.syncEngine != nil else {
             Logger.app.warning("SyncEngine not available, cannot start sync after authentication")
             return
@@ -375,6 +375,14 @@ extension AppDelegate {
         // Trigger initial sync and start automatic polling
         Logger.app.info("Triggering initial sync after authentication")
         await self.performSync()
+
+        if !self.firstLaunchHandler.isSetupCompleted {
+            if showSetupCompletion {
+                await self.firstLaunchHandler.handleSuccessfulSignIn()
+            } else {
+                self.firstLaunchHandler.markSetupCompleted()
+            }
+        }
     }
 
     func handleAuthenticationRevoked() async {
