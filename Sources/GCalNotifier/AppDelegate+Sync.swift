@@ -14,8 +14,14 @@ extension AppDelegate {
 
         Logger.app.info("Performing sync")
         do {
-            let result = try await syncEngine.sync(calendarId: "primary")
-            Logger.app.info("Sync complete: \(result.events.count) events")
+            let calendarIds = await self.resolveCalendarIdsForSync()
+            let result = try await syncEngine.syncAllCalendars(calendarIds)
+            Logger.app.info(
+                "Sync complete: \(result.events.count) events across \(result.successfulCalendars.count) calendars"
+            )
+            if !result.failedCalendars.isEmpty {
+                Logger.app.warning("Sync failed for \(result.failedCalendars.count) calendars")
+            }
             await self.scheduleAlertsForEvents(result.events)
 
             // Update status bar with new events
@@ -77,7 +83,8 @@ extension AppDelegate {
             // Clear sync tokens to force a full sync
             try await appStateStore.clearAllSyncTokens()
 
-            let result = try await syncEngine.sync(calendarId: "primary")
+            let calendarIds = await self.resolveCalendarIdsForSync(forceRefresh: true)
+            let result = try await syncEngine.syncAllCalendars(calendarIds)
             Logger.app.info("Force full sync complete: \(result.events.count) events")
 
             // Update last full sync time
@@ -93,6 +100,50 @@ extension AppDelegate {
             Logger.app.error("Force full sync failed: \(error.localizedDescription)")
             return .failure("Sync failed: \(error.localizedDescription)")
         }
+    }
+
+    private func resolveCalendarIdsForSync(forceRefresh: Bool = false) async -> [String] {
+        let configuredCalendars = self.dedupedCalendarIds(self.settingsStore.enabledCalendars)
+        if !configuredCalendars.isEmpty {
+            return configuredCalendars
+        }
+
+        if !forceRefresh, !self.cachedCalendarIds.isEmpty {
+            return self.cachedCalendarIds
+        }
+
+        guard let calendarClient = self.calendarClient else {
+            Logger.app.warning("Calendar client unavailable, falling back to primary calendar")
+            return ["primary"]
+        }
+
+        do {
+            let calendars = try await calendarClient.fetchCalendarList()
+            let ids = self.dedupedCalendarIds(calendars.map(\CalendarInfo.id))
+            if ids.isEmpty {
+                Logger.app.warning("Calendar list empty, falling back to primary calendar")
+                return ["primary"]
+            }
+            self.cachedCalendarIds = ids
+            return ids
+        } catch {
+            Logger.app.error("Failed to fetch calendar list: \(error.localizedDescription)")
+            if !self.cachedCalendarIds.isEmpty {
+                return self.cachedCalendarIds
+            }
+            return ["primary"]
+        }
+    }
+
+    private func dedupedCalendarIds(_ calendarIds: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for calendarId in calendarIds {
+            guard !seen.contains(calendarId) else { continue }
+            seen.insert(calendarId)
+            result.append(calendarId)
+        }
+        return result
     }
 
     /// Reconciles alerts for the given events using the AlertEngine.

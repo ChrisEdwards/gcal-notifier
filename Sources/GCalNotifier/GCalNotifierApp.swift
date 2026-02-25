@@ -56,6 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Calendar sync engine - orchestrates sync operations (internal for extension access)
     var syncEngine: SyncEngine?
 
+    /// Calendar client for fetching calendar list when syncing all calendars (internal for extension access).
+    var calendarClient: GoogleCalendarClient?
+
+    /// Cached calendar IDs for "all calendars" syncing (internal for extension access).
+    var cachedCalendarIds: [String] = []
+
     // MARK: - Handlers
 
     private let firstLaunchHandler = FirstLaunchHandler()
@@ -135,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let httpClient = URLSessionHTTPClient()
         let calendarClient = GoogleCalendarClient(httpClient: httpClient, tokenProvider: self.oauthProvider)
         let eventFilter = EventFilter(settings: self.settingsStore)
+        self.calendarClient = calendarClient
         self.syncEngine = SyncEngine(
             calendarClient: calendarClient,
             eventCache: eventCache,
@@ -220,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Logger.app.info("Auth state transitioned to unauthenticated, stopping sync")
                     self.menuController?.updateSetupRequired(true)
                     self.stopSyncPolling()
+                    self.cachedCalendarIds = []
                 }
 
                 self.lastKnownAuthState = currentState
