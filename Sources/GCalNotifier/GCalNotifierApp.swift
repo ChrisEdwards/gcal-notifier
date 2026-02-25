@@ -258,6 +258,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuController.onSettings = { [weak self] in
             self?.showSettingsWindow()
         }
+        menuController.onOpenNotificationSettings = { [weak self] in
+            self?.notificationPermissionHandler.openNotificationSettings()
+        }
         menuController.onQuit = {
             NSApp.terminate(nil)
         }
@@ -272,6 +275,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.menuController = menuController
+
+        self.notificationPermissionHandler.setDelegate(self)
+        self.notificationPermissionHandler.startMonitoring()
 
         // Create status item controller
         let statusItemController = StatusItemController()
@@ -288,6 +294,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.statusItemController = statusItemController
+
+        Task { [weak self] in
+            guard let self else { return }
+            let status = await self.notificationPermissionHandler.checkPermission()
+            self.menuController?.updateNotificationPermissionDenied(status == .denied)
+        }
     }
 
     func applicationWillTerminate(_: Notification) {
@@ -365,6 +377,14 @@ extension AppDelegate: FirstLaunchHandlerDelegate {
         // - Enable all calendars
         // - Trigger initial sync
         // These will be handled by the appropriate services when available
+    }
+}
+
+// MARK: - NotificationPermissionHandlerDelegate
+
+extension AppDelegate: NotificationPermissionHandlerDelegate {
+    func permissionStatusDidChange(_: NotificationPermissionHandler, isGranted: Bool) async {
+        self.menuController?.updateNotificationPermissionDenied(!isGranted)
     }
 }
 
