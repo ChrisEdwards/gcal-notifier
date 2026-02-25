@@ -50,6 +50,7 @@ public actor LocalhostCallbackServer: CallbackServer {
     private let port: UInt16
     private var listener: Task<Void, Error>?
     private var callbackContinuation: CheckedContinuation<OAuthCallbackResult, Error>?
+    private var callbackContinuationId: UUID?
     private var serverSocket: Int32 = -1
 
     public init(port: UInt16) {
@@ -76,14 +77,18 @@ public actor LocalhostCallbackServer: CallbackServer {
     public func waitForCallback(timeout: TimeInterval) async throws -> OAuthCallbackResult {
         try await withCheckedThrowingContinuation { continuation in
             self.callbackContinuation = continuation
+            let continuationId = UUID()
+            self.callbackContinuationId = continuationId
 
             // Set up timeout
-            Task {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                if let cont = await self.callbackContinuation {
-                    await self.clearContinuation()
-                    cont.resume(throwing: OAuthError.authenticationFailed("Callback timeout"))
+            Task { [weak self] in
+                let safeTimeout = Self.clampedTimeoutSeconds(timeout)
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(safeTimeout * 1_000_000_000))
+                } catch {
+                    return
                 }
+                await self?.handleTimeout(for: continuationId)
             }
         }
     }
@@ -143,6 +148,18 @@ public actor LocalhostCallbackServer: CallbackServer {
 
     private func clearContinuation() {
         self.callbackContinuation = nil
+        self.callbackContinuationId = nil
+    }
+
+    private func handleTimeout(for continuationId: UUID) {
+        guard self.callbackContinuationId == continuationId,
+              let continuation = self.callbackContinuation
+        else {
+            return
+        }
+
+        self.clearContinuation()
+        continuation.resume(throwing: OAuthError.authenticationFailed("Callback timeout"))
     }
 
     private func handleConnection(_ clientSocket: Int32) {
@@ -217,8 +234,15 @@ public actor LocalhostCallbackServer: CallbackServer {
 
     private func resumeWithResult(_ result: OAuthCallbackResult) {
         if let continuation = callbackContinuation {
-            self.callbackContinuation = nil
+            self.clearContinuation()
             continuation.resume(returning: result)
         }
+    }
+}
+
+private extension LocalhostCallbackServer {
+    static func clampedTimeoutSeconds(_ timeout: TimeInterval) -> TimeInterval {
+        let maxSeconds = Double(UInt64.max) / 1_000_000_000
+        return max(0, min(timeout, maxSeconds))
     }
 }
