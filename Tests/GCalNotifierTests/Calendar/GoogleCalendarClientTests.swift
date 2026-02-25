@@ -276,6 +276,19 @@ struct GoogleCalendarClientTests {
         #expect(response.events[0].meetingLinks[0].platform == .zoom)
     }
 
+    @Test("fetchEvents extracts attachment links")
+    func fetchEventsExtractsAttachmentLinks() async throws {
+        let ctx = makeCalendarClientTestContext()
+        let attachments = "\"attachments\":[{\"fileUrl\":\"https://zoom.us/j/456\"}]"
+        let eventJSON = makeEventJSON(id: "event-attachment", summary: "Attachment Meeting", extras: [attachments])
+        await ctx.httpClient.queueResponse(data: makeEventsResponseJSON(events: [eventJSON]), statusCode: 200)
+
+        let response = try await ctx.client.fetchEvents(calendarId: "primary")
+        #expect(response.events.count == 1)
+        #expect(response.events[0].meetingLinks.count == 1)
+        #expect(response.events[0].meetingLinks[0].platform == .zoom)
+    }
+
     @Test("fetchEvents with date range sends timeMin and timeMax")
     func fetchEventsWithDateRangeSendsTimeMinMax() async throws {
         let ctx = makeCalendarClientTestContext()

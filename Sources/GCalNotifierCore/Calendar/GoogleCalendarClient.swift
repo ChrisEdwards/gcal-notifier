@@ -2,11 +2,8 @@ import Foundation
 import OSLog
 
 /// HTTP client for Google Calendar API operations.
-///
 /// `GoogleCalendarClient` provides a type-safe interface for fetching calendars and events
 /// from the Google Calendar API. It handles token injection, error mapping, and response parsing.
-///
-/// ## Usage
 /// ```swift
 /// let client = GoogleCalendarClient(httpClient: URLSessionHTTPClient(), tokenProvider: oauthProvider)
 /// let calendars = try await client.fetchCalendarList()
@@ -278,12 +275,14 @@ public actor GoogleCalendarClient {
         let conferenceEntryPoints = item.conferenceData?.entryPoints?.map {
             ConferenceEntryPoint(entryPointType: $0.entryPointType, uri: $0.uri, label: $0.label)
         }
+        let attachmentURLs = item.attachments?.compactMap(\.fileUrl)
 
         return self.linkExtractor.extractAll(
             conferenceEntryPoints: conferenceEntryPoints,
             hangoutLink: item.hangoutLink,
             location: item.location,
-            description: item.description
+            description: item.description,
+            attachmentURLs: attachmentURLs
         )
     }
 
@@ -430,6 +429,7 @@ private struct GoogleEventItem: Codable {
     let conferenceData: GoogleConferenceData?
     let organizer: GoogleOrganizer?
     let attendees: [GoogleAttendee]?
+    let attachments: [GoogleAttachment]?
     let status: String?
 }
 
@@ -447,6 +447,10 @@ private struct GoogleEntryPoint: Codable {
     let entryPointType: String
     let uri: String?
     let label: String?
+}
+
+private struct GoogleAttachment: Codable {
+    let fileUrl: String?
 }
 
 private struct GoogleOrganizer: Codable {
