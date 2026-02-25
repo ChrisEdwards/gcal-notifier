@@ -351,6 +351,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - Authentication Handling
 
 extension AppDelegate {
+    func canPerformSync() async -> Bool {
+        let state = await self.oauthProvider.state
+        return state.canMakeApiCalls
+    }
+
     /// Called when authentication completes successfully - triggers initial sync and starts polling.
     func handleAuthenticationCompleted() async {
         guard self.syncEngine != nil else {

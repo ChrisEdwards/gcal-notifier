@@ -7,6 +7,12 @@ extension AppDelegate {
     /// Performs a sync operation using the shared SyncEngine and reschedules alerts.
     /// Called from menu bar Refresh and can be reused by other sync triggers.
     func performSync() async {
+        let canSync = await self.canPerformSync()
+        guard canSync else {
+            Logger.app.info("Skipping sync: authentication required")
+            return
+        }
+
         guard let syncEngine else {
             Logger.app.warning("SyncEngine not available, cannot perform sync")
             return
@@ -73,6 +79,12 @@ extension AppDelegate {
     /// Performs a force full sync by clearing tokens first, then syncing.
     /// Returns result for UI feedback.
     func performForceFullSync() async -> ForceSyncResult {
+        let canSync = await self.canPerformSync()
+        guard canSync else {
+            Logger.app.warning("Force sync requested without authentication")
+            return .failure("Please sign in first.")
+        }
+
         guard let syncEngine, let appStateStore else {
             Logger.app.warning("SyncEngine or AppStateStore not available")
             return .failure("Sync not available")
