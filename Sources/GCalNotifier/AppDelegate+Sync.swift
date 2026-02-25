@@ -34,7 +34,7 @@ extension AppDelegate {
             await self.statusItemController?.loadEventsFromCache()
 
             // Schedule next automatic sync based on upcoming events
-            let interval = await syncEngine.calculatePollingInterval(events: result.events)
+            let interval = await syncEngine.calculatePollingInterval(events: result.filteredEvents)
             self.scheduleSyncPolling(interval: interval.rawValue)
         } catch {
             Logger.app.error("Sync failed: \(error.localizedDescription)")
