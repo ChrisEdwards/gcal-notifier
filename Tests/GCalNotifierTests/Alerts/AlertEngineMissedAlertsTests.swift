@@ -194,10 +194,10 @@ struct AlertEngineMissedAlertsTests {
         #expect(deliveredAlerts.isEmpty)
     }
 
-    // MARK: - Test: Missed alerts are removed from the engine
+    // MARK: - Test: Missed alerts remain for snooze/dismiss
 
-    @Test("checkForMissedAlerts removes processed alerts from engine")
-    func checkForMissedAlertsRemovesProcessedAlerts() async throws {
+    @Test("checkForMissedAlerts keeps actionable alerts in engine")
+    func checkForMissedAlertsKeepsActionableAlerts() async throws {
         let tempURL = makeAlertTestTempFileURL()
         defer { cleanupAlertTestTempDir(tempURL) }
 
@@ -229,9 +229,10 @@ struct AlertEngineMissedAlertsTests {
 
         _ = await engine.checkForMissedAlerts()
 
-        // Verify alert is removed
+        // Verify alert remains for snooze/dismiss handling
         let alertsAfter = await engine.scheduledAlerts
-        #expect(alertsAfter.isEmpty)
+        #expect(alertsAfter.count == 1)
+        #expect(alertsAfter.first?.eventId == event.qualifiedId)
     }
 
     // MARK: - Test: Multiple missed alerts
@@ -340,7 +341,10 @@ struct AlertEngineMissedAlertsTests {
         }
         return counts
     }
+}
 
+@Suite("AlertEngine Missed Alerts Grace Period Tests")
+struct AlertEngineMissedAlertsGracePeriodTests {
     // MARK: - Test: Grace period boundary
 
     @Test("checkForMissedAlerts uses exactly 5 minute grace period")

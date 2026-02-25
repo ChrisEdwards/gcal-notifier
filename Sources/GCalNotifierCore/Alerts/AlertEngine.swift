@@ -420,15 +420,18 @@ public extension AlertEngine {
         for alert in missedAlerts {
             let timeSinceMeetingStart = now.timeIntervalSince(alert.eventStartTime)
             let result: MissedAlertResult
+            var shouldKeepAlert = false
 
             if timeSinceMeetingStart < 0 {
                 // Meeting hasn't started yet - fire alert now
                 result = .fireNow(alert)
                 await self.delivery.deliver(alert: alert)
+                shouldKeepAlert = true
             } else if timeSinceMeetingStart < Self.missedAlertGracePeriod {
                 // Meeting started within grace period - still worth alerting
                 result = .meetingJustStarted(alert)
                 await self.delivery.deliver(alert: alert)
+                shouldKeepAlert = true
             } else {
                 // Meeting too old - just clean up
                 result = .tooOld(alert)
@@ -436,9 +439,14 @@ public extension AlertEngine {
 
             results.append(result)
 
-            // Remove the processed alert
+            // Cancel any pending schedule for the missed alert.
             await self.scheduler.cancel(alertId: alert.id)
-            self.alerts.removeValue(forKey: alert.id)
+
+            if shouldKeepAlert {
+                self.alerts[alert.id] = self.updatedAlertForMissed(alert, now: now)
+            } else {
+                self.alerts.removeValue(forKey: alert.id)
+            }
         }
 
         if !results.isEmpty {
@@ -446,5 +454,18 @@ public extension AlertEngine {
         }
 
         return results
+    }
+
+    private func updatedAlertForMissed(_ alert: ScheduledAlert, now: Date) -> ScheduledAlert {
+        ScheduledAlert(
+            id: alert.id,
+            eventId: alert.eventId,
+            stage: alert.stage,
+            scheduledFireTime: now,
+            snoozeCount: alert.snoozeCount,
+            originalFireTime: alert.originalFireTime,
+            eventTitle: alert.eventTitle,
+            eventStartTime: alert.eventStartTime
+        )
     }
 }
