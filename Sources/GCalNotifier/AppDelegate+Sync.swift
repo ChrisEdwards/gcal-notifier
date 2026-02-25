@@ -95,15 +95,15 @@ extension AppDelegate {
         }
     }
 
-    /// Schedules alerts for the given events using the AlertEngine.
+    /// Reconciles alerts for the given events using the AlertEngine.
     func scheduleAlertsForEvents(_ events: [CalendarEvent]) async {
         guard let alertEngine else {
             Logger.app.warning("AlertEngine not available, cannot schedule alerts")
             return
         }
 
-        Logger.app.info("Scheduling alerts for \(events.count) events")
-        await alertEngine.scheduleAlerts(for: events, settings: self.settingsStore)
+        Logger.app.info("Reconciling alerts for \(events.count) events")
+        await alertEngine.reconcile(newEvents: events, settings: self.settingsStore)
 
         let scheduledCount = await alertEngine.scheduledAlerts.count
         Logger.app.info("AlertEngine now has \(scheduledCount) scheduled alerts")
