@@ -333,9 +333,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Create new settings window with SwiftUI content
-        let preferencesView = PreferencesView(settings: self.settingsStore, onForceSync: { [weak self] in
-            await self?.performForceFullSync() ?? .failure("App not available")
-        })
+        let preferencesView = PreferencesView(
+            settings: self.settingsStore,
+            oauthProvider: self.oauthProvider,
+            onForceSync: { [weak self] in
+                await self?.performForceFullSync() ?? .failure("App not available")
+            }
+        )
         let hostingController = NSHostingController(rootView: preferencesView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "GCalNotifier Settings"

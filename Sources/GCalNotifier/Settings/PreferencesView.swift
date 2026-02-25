@@ -4,10 +4,16 @@ import SwiftUI
 /// Main preferences window with tabbed interface for all application settings.
 struct PreferencesView: View {
     @State private var settings: SettingsStore
+    private let oauthProvider: GoogleOAuthProvider
     private let onForceSync: (() async -> ForceSyncResult)?
 
-    init(settings: SettingsStore = SettingsStore(), onForceSync: (() async -> ForceSyncResult)? = nil) {
+    init(
+        settings: SettingsStore = SettingsStore(),
+        oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider(),
+        onForceSync: (() async -> ForceSyncResult)? = nil
+    ) {
         self._settings = State(initialValue: settings)
+        self.oauthProvider = oauthProvider
         self.onForceSync = onForceSync
     }
 
@@ -28,7 +34,7 @@ struct PreferencesView: View {
             ShortcutsTab(settings: self.settings)
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
 
-            AccountTab(onForceSync: self.onForceSync)
+            AccountTab(oauthProvider: self.oauthProvider, onForceSync: self.onForceSync)
                 .tabItem { Label("Account", systemImage: "person.circle") }
         }
         .frame(width: 500, height: 400)
