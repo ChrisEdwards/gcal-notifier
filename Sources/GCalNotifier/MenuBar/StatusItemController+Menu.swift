@@ -163,13 +163,14 @@ public enum MenuBuilder {
 
         let timeString = Self.formatTime(event.startTime)
         let truncatedTitle = String(event.title.prefix(25))
+        let isEnabled = event.primaryMeetingURL != nil || event.htmlLink != nil
 
         return .meeting(
             icon: icon,
             title: truncatedTitle,
             time: timeString,
             event: event,
-            enabled: !event.meetingLinks.isEmpty
+            enabled: isEnabled
         )
     }
 }

@@ -287,9 +287,9 @@ extension MenuController {
         item.representedObject = event
         item.isEnabled = enabled
 
-        // Add submenu for events with links
-        if !event.meetingLinks.isEmpty {
-            item.submenu = self.createEventSubmenu(event: event)
+        let submenu = self.createEventSubmenu(event: event)
+        if !submenu.items.isEmpty {
+            item.submenu = submenu
         }
 
         return item
@@ -346,14 +346,16 @@ extension MenuController {
         }
 
         // Open in Calendar
-        let openInCal = NSMenuItem(
-            title: "Open in Calendar",
-            action: #selector(handleOpenInCalendar(_:)),
-            keyEquivalent: ""
-        )
-        openInCal.target = self
-        openInCal.representedObject = event
-        submenu.addItem(openInCal)
+        if event.htmlLink != nil {
+            let openInCal = NSMenuItem(
+                title: "Open in Calendar",
+                action: #selector(handleOpenInCalendar(_:)),
+                keyEquivalent: ""
+            )
+            openInCal.target = self
+            openInCal.representedObject = event
+            submenu.addItem(openInCal)
+        }
 
         return submenu
     }
@@ -378,6 +380,8 @@ extension MenuController {
         if let callback = onJoinMeeting {
             callback(event)
         } else if let url = event.primaryMeetingURL {
+            NSWorkspace.shared.open(url)
+        } else if let url = event.htmlLink {
             NSWorkspace.shared.open(url)
         }
     }

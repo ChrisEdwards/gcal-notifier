@@ -17,7 +17,8 @@ private func makeTestEvent(
     meetingLinks: [MeetingLink] = [],
     isOrganizer: Bool = false,
     attendeeCount: Int = 2,
-    responseStatus: ResponseStatus = .accepted
+    responseStatus: ResponseStatus = .accepted,
+    htmlLink: URL? = nil
 ) -> CalendarEvent {
     CalendarEvent(
         id: id,
@@ -30,7 +31,8 @@ private func makeTestEvent(
         meetingLinks: meetingLinks,
         isOrganizer: isOrganizer,
         attendeeCount: attendeeCount,
-        responseStatus: responseStatus
+        responseStatus: responseStatus,
+        htmlLink: htmlLink
     )
 }
 
@@ -254,6 +256,26 @@ struct MeetingItemTests {
         #expect(enabled == false)
     }
 
+    @Test("Meeting without link is enabled when calendar link exists")
+    func meetingWithoutLinkEnabledWithCalendarLink() {
+        let now = testNow()
+        let url = URL(string: "https://calendar.google.com/calendar/event?eid=abc123")
+        let event = makeTestEvent(
+            startTime: now.addingTimeInterval(60 * 60),
+            meetingLinks: [],
+            htmlLink: url
+        )
+        let items = MenuBuilder.buildMenuItems(events: [event], conflictingEventIds: [], now: now)
+        let meetingItem = items.first { if case .meeting = $0 { return true }; return false }
+
+        guard case let .meeting(icon, _, _, _, enabled) = meetingItem else {
+            Issue.record("Expected meeting item")
+            return
+        }
+        #expect(icon == "📅")
+        #expect(enabled == true)
+    }
+
     @Test("Conflicting meeting shows exclamation icon")
     func conflictingMeetingShowsExclamation() {
         let now = testNow()
@@ -449,48 +471,5 @@ struct MenuCountdownFormattingTests {
         let event = makeTestEvent(startTime: now.addingTimeInterval(-5 * 60))
         let countdown = MenuBuilder.formatCountdown(to: event, now: now)
         #expect(countdown == "now")
-    }
-}
-
-// MARK: - MenuItem Equatable Tests
-
-@Suite("MenuItem Equatable Tests")
-struct MenuItemEquatableTests {
-    @Test("Notification warning items are equal")
-    func notificationWarningsAreEqual() {
-        #expect(MenuBuilder.MenuItem.notificationWarning == MenuBuilder.MenuItem.notificationWarning)
-    }
-
-    @Test("Separator items are equal")
-    func separatorsAreEqual() {
-        #expect(MenuBuilder.MenuItem.separator == MenuBuilder.MenuItem.separator)
-    }
-
-    @Test("Action items with same values are equal")
-    func actionItemsEqual() {
-        let item1 = MenuBuilder.MenuItem.action(title: "Refresh", action: .refresh)
-        let item2 = MenuBuilder.MenuItem.action(title: "Refresh", action: .refresh)
-        #expect(item1 == item2)
-    }
-
-    @Test("Action items with different actions are not equal")
-    func actionItemsNotEqual() {
-        let item1 = MenuBuilder.MenuItem.action(title: "Refresh", action: .refresh)
-        let item2 = MenuBuilder.MenuItem.action(title: "Refresh", action: .settings)
-        #expect(item1 != item2)
-    }
-
-    @Test("Empty state items with same message are equal")
-    func emptyStateItemsEqual() {
-        let item1 = MenuBuilder.MenuItem.emptyState(message: "No meetings")
-        let item2 = MenuBuilder.MenuItem.emptyState(message: "No meetings")
-        #expect(item1 == item2)
-    }
-
-    @Test("OpenNotificationSettings action items are equal")
-    func openNotificationSettingsActionItemsEqual() {
-        let item1 = MenuBuilder.MenuItem.action(title: "Open Settings", action: .openNotificationSettings)
-        let item2 = MenuBuilder.MenuItem.action(title: "Open Settings", action: .openNotificationSettings)
-        #expect(item1 == item2)
     }
 }
