@@ -182,7 +182,7 @@ public actor SyncEngine {
         }
     }
 
-    /// Finds the current meeting the user is in (if any).
+    /// Finds the current alertable meeting the user is in (if any).
     ///
     /// - Parameter now: Current time (defaults to now).
     /// - Returns: The current meeting event, or `nil` if not in a meeting.
@@ -190,7 +190,7 @@ public actor SyncEngine {
         do {
             let events = try await eventCache.load()
             return events.first { event in
-                event.isInProgress(at: now) && event.hasVideoLink
+                event.isInProgress(at: now) && event.shouldAlert
             }
         } catch {
             return nil

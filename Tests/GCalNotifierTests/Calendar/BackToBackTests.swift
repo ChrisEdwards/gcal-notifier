@@ -249,6 +249,50 @@ struct BackToBackStateTests {
         #expect(state.isBackToBack == false)
     }
 
+    @Test("Declined current meeting is ignored")
+    func declinedCurrentMeetingIgnored() throws {
+        let now = Date()
+        let url = try #require(TestURLs.googleMeet)
+        let link = MeetingLink(url: url)
+
+        let declined = makeEvent(
+            id: "declined",
+            startTime: now.addingTimeInterval(-900),
+            endTime: now.addingTimeInterval(900),
+            meetingLinks: [link],
+            responseStatus: .declined
+        )
+        let next = makeEvent(
+            id: "next",
+            startTime: now.addingTimeInterval(900),
+            endTime: now.addingTimeInterval(3600),
+            meetingLinks: [link]
+        )
+
+        let state = BackToBackState.detect(from: [declined, next], now: now)
+        #expect(state == .none)
+    }
+
+    @Test("All-day events with meeting links are ignored")
+    func allDayMeetingIgnored() throws {
+        let now = Date()
+        let url = try #require(TestURLs.googleMeet)
+        let link = MeetingLink(url: url)
+        let startOfDay = Calendar.current.startOfDay(for: now)
+        let endOfDay = startOfDay.addingTimeInterval(86400)
+
+        let allDay = makeEvent(
+            id: "all-day",
+            startTime: startOfDay,
+            endTime: endOfDay,
+            isAllDay: true,
+            meetingLinks: [link]
+        )
+
+        let state = BackToBackState.detect(from: [allDay], now: now)
+        #expect(state == .none)
+    }
+
     @Test("none state has nil meetings")
     func noneStateHasNilMeetings() {
         let state = BackToBackState.none

@@ -245,9 +245,11 @@ public extension BackToBackState {
     ///   - now: The current time (defaults to now).
     /// - Returns: The detected back-to-back state.
     static func detect(from events: [CalendarEvent], now: Date = Date()) -> BackToBackState {
-        // Find the current meeting (user is in a meeting with video link)
-        let currentMeeting = events.first { event in
-            event.isInProgress(at: now) && event.hasVideoLink
+        let alertableEvents = events.filter(\.shouldAlert)
+
+        // Find the current meeting (user is in an alertable meeting)
+        let currentMeeting = alertableEvents.first { event in
+            event.isInProgress(at: now)
         }
 
         guard let current = currentMeeting else {
@@ -255,9 +257,9 @@ public extension BackToBackState {
         }
 
         // Find the next meeting that would be back-to-back
-        let nextBackToBack = events
+        let nextBackToBack = alertableEvents
             .filter { event in
-                event.startTime > now && event.hasVideoLink && event.qualifiedId != current.qualifiedId
+                event.startTime > now && event.qualifiedId != current.qualifiedId
             }
             .sorted { $0.startTime < $1.startTime }
             .first { current.isBackToBack(with: $0) }
