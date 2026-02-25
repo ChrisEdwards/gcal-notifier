@@ -251,10 +251,11 @@ public extension BackToBackState {
     ) -> BackToBackState {
         let alertableEvents = assumeFiltered ? events : events.filter(\.shouldAlert)
 
-        // Find the current meeting (user is in an alertable meeting)
-        let currentMeeting = alertableEvents.first { event in
-            event.isInProgress(at: now)
-        }
+        // Find the current meeting (user is in an alertable meeting).
+        // If multiple overlap, prefer the most recently started meeting.
+        let currentMeeting = alertableEvents
+            .filter { $0.isInProgress(at: now) }
+            .max(by: { $0.startTime < $1.startTime })
 
         guard let current = currentMeeting else {
             return .none

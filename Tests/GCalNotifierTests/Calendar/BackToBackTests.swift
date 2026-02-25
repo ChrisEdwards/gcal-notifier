@@ -404,6 +404,30 @@ struct BackToBackStateDetectionTests {
         #expect(state.nextBackToBackMeeting == nil)
     }
 
+    @Test("Selects most recently started meeting when overlapping")
+    func selectsMostRecentOverlappingMeeting() throws {
+        let now = Date()
+        let url = try #require(TestURLs.googleMeet)
+        let link = MeetingLink(url: url)
+
+        let earlyMeeting = makeEvent(
+            id: "early",
+            startTime: now.addingTimeInterval(-3600),
+            endTime: now.addingTimeInterval(900),
+            meetingLinks: [link]
+        )
+        let recentMeeting = makeEvent(
+            id: "recent",
+            startTime: now.addingTimeInterval(-900),
+            endTime: now.addingTimeInterval(1200),
+            meetingLinks: [link]
+        )
+
+        let state = BackToBackState.detect(from: [earlyMeeting, recentMeeting], now: now)
+
+        #expect(state.currentMeeting?.id == "recent")
+    }
+
     @Test("Ignores events without video links for current meeting detection")
     func ignoresEventsWithoutVideoLinks() throws {
         let now = Date()
