@@ -341,7 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Create new settings window with SwiftUI content
-        let preferencesView = PreferencesView(onForceSync: { [weak self] in
+        let preferencesView = PreferencesView(settings: self.settingsStore, onForceSync: { [weak self] in
             await self?.performForceFullSync() ?? .failure("App not available")
         })
         let hostingController = NSHostingController(rootView: preferencesView)
