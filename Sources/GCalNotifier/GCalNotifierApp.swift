@@ -165,9 +165,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             self.alertDelivery = delivery
 
+            let scheduler = await NotificationScheduler()
             let engine = AlertEngine(
                 alertsStore: alertsStore,
-                scheduler: DispatchAlertScheduler(),
+                scheduler: scheduler,
                 delivery: delivery
             )
             self.alertEngine = engine
