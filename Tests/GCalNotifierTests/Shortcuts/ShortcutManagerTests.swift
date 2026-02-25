@@ -222,6 +222,48 @@ struct FindNextMeetingTests {
 
         #expect(nextWithVideo?.id == "sooner")
     }
+
+    @Test("Skips declined events when finding next meeting")
+    @MainActor
+    func skipsDeclinedEvents() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("test-\(UUID().uuidString).json")
+        let cache = EventCache(fileURL: fileURL)
+
+        let now = Date()
+        let declinedEvent = makeTestEvent(
+            id: "declined",
+            title: "Declined Meeting",
+            startTime: now.addingTimeInterval(1200),
+            meetingURL: "https://meet.google.com/declined-meeting"
+        )
+        let acceptedEvent = makeTestEvent(
+            id: "accepted",
+            title: "Accepted Meeting",
+            startTime: now.addingTimeInterval(2400),
+            meetingURL: "https://meet.google.com/accepted-meeting"
+        )
+
+        let declined = CalendarEvent(
+            id: declinedEvent.id,
+            calendarId: declinedEvent.calendarId,
+            title: declinedEvent.title,
+            startTime: declinedEvent.startTime,
+            endTime: declinedEvent.endTime,
+            isAllDay: declinedEvent.isAllDay,
+            location: declinedEvent.location,
+            meetingLinks: declinedEvent.meetingLinks,
+            isOrganizer: declinedEvent.isOrganizer,
+            attendeeCount: declinedEvent.attendeeCount,
+            responseStatus: .declined
+        )
+
+        try await cache.save([declined, acceptedEvent])
+
+        let next = try await ShortcutManager.shared.findNextMeetingWithVideoLink(in: cache)
+
+        #expect(next?.id == "accepted")
+    }
 }
 
 // MARK: - Time Formatting Tests

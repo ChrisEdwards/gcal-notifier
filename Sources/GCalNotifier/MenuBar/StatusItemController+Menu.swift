@@ -134,7 +134,7 @@ public enum MenuBuilder {
 
     private static func findNextMeeting(from events: [CalendarEvent], now: Date) -> CalendarEvent? {
         events
-            .filter { $0.startTime > now && !$0.meetingLinks.isEmpty }
+            .filter { $0.startTime > now && !$0.meetingLinks.isEmpty && $0.responseStatus != .declined }
             .sorted { $0.startTime < $1.startTime }
             .first
     }

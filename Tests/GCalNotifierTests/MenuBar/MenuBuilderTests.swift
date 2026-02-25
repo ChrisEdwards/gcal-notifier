@@ -389,6 +389,38 @@ struct MenuEventFilteringTests {
         }
         #expect(title == "Future Meeting")
     }
+
+    @Test("Quick join skips declined meetings")
+    func quickJoinSkipsDeclinedMeetings() {
+        let now = testNow()
+        guard let link = makeTestLink() else { return }
+        let declinedEvent = makeTestEvent(
+            id: "declined",
+            title: "Declined Meeting",
+            startTime: now.addingTimeInterval(10 * 60),
+            meetingLinks: [link],
+            responseStatus: .declined
+        )
+        let acceptedEvent = makeTestEvent(
+            id: "accepted",
+            title: "Accepted Meeting",
+            startTime: now.addingTimeInterval(30 * 60),
+            meetingLinks: [link],
+            responseStatus: .accepted
+        )
+
+        let items = MenuBuilder.buildMenuItems(
+            events: [declinedEvent, acceptedEvent],
+            conflictingEventIds: [],
+            now: now
+        )
+
+        guard case let .quickJoin(title, _) = items[0] else {
+            Issue.record("Expected quickJoin item first")
+            return
+        }
+        #expect(title == "Accepted Meeting")
+    }
 }
 
 // MARK: - Countdown Formatting Tests

@@ -168,13 +168,13 @@ public final class ShortcutManager {
         }
     }
 
-    private func findNextMeetingWithVideoLink(in cache: EventCache) async throws -> CalendarEvent? {
+    func findNextMeetingWithVideoLink(in cache: EventCache) async throws -> CalendarEvent? {
         let now = Date()
         let endOfDay = now.addingTimeInterval(24 * 60 * 60)
 
         let events = try await cache.events(from: now, to: endOfDay)
         return events
-            .filter { $0.hasVideoLink && $0.startTime > now }
+            .filter { $0.hasVideoLink && $0.startTime > now && $0.responseStatus != .declined }
             .sorted { $0.startTime < $1.startTime }
             .first
     }
