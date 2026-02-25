@@ -18,12 +18,10 @@ struct GCalNotifierApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Window Management
 
-    /// Settings window (created on demand)
     private var settingsWindow: NSWindow?
 
     // MARK: - Menu Bar
 
-    /// Status item controller (internal for extension access to update after sync)
     var statusItemController: StatusItemController?
     private var menuController: MenuController?
 
@@ -32,13 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Local storage for calendar events - shared across components
     private var eventCache: EventCache?
 
-    /// Settings store - shared across components (internal for extension access)
     let settingsStore = SettingsStore()
 
     /// Alert window controller for meeting alerts
     private var alertWindowController: AlertWindowController?
 
-    /// Alert engine for scheduling and firing alerts (internal for extension access)
     var alertEngine: AlertEngine?
 
     /// Alert delivery implementation
@@ -149,46 +145,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             eventFilter: eventFilter
         )
         Logger.app.info("SyncEngine initialized successfully")
-    }
-
-    private func setupAlertEngine() {
-        guard let eventCache, let alertsStore, let alertWindowController else {
-            Logger.app.warning("AlertEngine not created: missing dependencies")
-            return
-        }
-        Task {
-            let delivery = WindowAlertDelivery(
-                windowController: alertWindowController,
-                eventCache: eventCache,
-                settings: self.settingsStore
-            )
-
-            // Update status bar when an alert is delivered
-            delivery.onAlertDelivered = { [weak self] in
-                Task { @MainActor in
-                    self?.statusItemController?.updateDisplay()
-                }
-            }
-
-            self.alertDelivery = delivery
-
-            let scheduler = await NotificationScheduler()
-            let engine = AlertEngine(
-                alertsStore: alertsStore,
-                scheduler: scheduler,
-                delivery: delivery
-            )
-            self.alertEngine = engine
-            await MainActor.run { delivery.setAlertEngine(engine) }
-
-            do {
-                try await engine.reconcileOnRelaunch()
-                Logger.app.info("AlertEngine reconciled on relaunch")
-            } catch {
-                Logger.app.error("Failed to reconcile alerts: \(error.localizedDescription)")
-            }
-            Logger.app.info("AlertEngine initialized successfully")
-        }
     }
 
     private func setupOAuthAndSync() {
@@ -350,6 +306,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
 
         self.settingsWindow = window
+    }
+}
+
+// MARK: - Alert Engine
+
+extension AppDelegate {
+    private func setupAlertEngine() {
+        guard let eventCache, let alertsStore, let alertWindowController else {
+            Logger.app.warning("AlertEngine not created: missing dependencies")
+            return
+        }
+        Task {
+            let delivery = WindowAlertDelivery(
+                windowController: alertWindowController,
+                eventCache: eventCache,
+                settings: self.settingsStore
+            )
+
+            // Update status bar when an alert is delivered
+            delivery.onAlertDelivered = { [weak self] in
+                Task { @MainActor in
+                    self?.statusItemController?.updateDisplay()
+                }
+            }
+
+            self.alertDelivery = delivery
+
+            let scheduler = await NotificationScheduler()
+            let engine = AlertEngine(
+                alertsStore: alertsStore,
+                scheduler: scheduler,
+                delivery: delivery
+            )
+            await self.configureAlertEngineProviders(engine)
+            self.alertEngine = engine
+            await MainActor.run { delivery.setAlertEngine(engine) }
+
+            do {
+                try await engine.reconcileOnRelaunch()
+                Logger.app.info("AlertEngine reconciled on relaunch")
+            } catch {
+                Logger.app.error("Failed to reconcile alerts: \(error.localizedDescription)")
+            }
+            Logger.app.info("AlertEngine initialized successfully")
+        }
+    }
+
+    private func configureAlertEngineProviders(_ engine: AlertEngine) async {
+        await self.configureBackToBackProvider(engine)
+        await self.configurePresentationModeProvider(engine)
+    }
+
+    private func configureBackToBackProvider(_ engine: AlertEngine) async {
+        guard let syncEngine else { return }
+        await engine.setBackToBackContextProvider { alert in
+            guard let current = await syncEngine.currentMeeting() else {
+                return .none
+            }
+            let next = await syncEngine.nextBackToBackMeeting()
+            let isBackToBack = next?.qualifiedId == alert.eventId
+            return BackToBackAlertContext(
+                isInMeeting: true,
+                isBackToBackSituation: isBackToBack,
+                currentMeeting: current
+            )
+        }
+    }
+
+    private func configurePresentationModeProvider(_ engine: AlertEngine) async {
+        let settingsStore = self.settingsStore
+        await engine.setPresentationModeProvider {
+            guard settingsStore.suppressDuringScreenShare else { return nil }
+            let state = await MainActor.run { PresentationModeDetector.shared.detect() }
+            return state.alertDowngradeReason
+        }
     }
 }
 
