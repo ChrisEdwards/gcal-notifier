@@ -220,7 +220,7 @@ struct AlertContentProviderTests {
         )
 
         // Just verify it returns something - can't really test SwiftUI view internals
-        #expect(type(of: view) == PlaceholderAlertContent.self)
+        #expect(type(of: view) == AlertContentView.self)
     }
 
     @MainActor
@@ -247,7 +247,7 @@ struct AlertContentProviderTests {
         )
 
         // Verify it returns the expected type
-        #expect(type(of: view) == PlaceholderAlertContent.self)
+        #expect(type(of: view) == AlertContentView.self)
     }
 }
 

@@ -109,12 +109,15 @@ public struct DefaultAlertContentProvider: AlertContentProvider {
         snoozeContext: String?,
         actions: AlertWindowActions
     ) -> some View {
-        PlaceholderAlertContent(
+        AlertContentView(
             event: event,
             stage: stage,
             isSnoozed: isSnoozed,
             snoozeContext: snoozeContext,
-            actions: actions
+            onJoin: actions.onJoin,
+            onSnooze: actions.onSnooze,
+            onOpenCalendar: actions.onOpenCalendar,
+            onDismiss: actions.onDismiss
         )
     }
 }
