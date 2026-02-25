@@ -132,23 +132,27 @@ struct KeychainErrorTests {
 /// These tests run serially to avoid interference between operations.
 @Suite("KeychainManager Tests", .serialized)
 struct KeychainManagerTests {
-    /// Unique service identifier to isolate test data from production data.
+    /// Base service identifier to isolate test data from production data.
     private let testService = "com.gcal-notifier.auth.tests.\(ProcessInfo.processInfo.processIdentifier)"
 
     private func createManager() -> KeychainManager {
-        KeychainManager(service: self.testService)
+        KeychainManager(service: self.makeService())
     }
 
     /// Cleans up any leftover test data and returns the manager for use.
     /// This ensures each test starts with a clean slate.
     private func createCleanManager() async -> KeychainManager {
-        let manager = KeychainManager(service: self.testService)
+        let manager = self.createManager()
         try? await manager.deleteAll()
         return manager
     }
 
     private func cleanup(_ manager: KeychainManager) async {
         try? await manager.deleteAll()
+    }
+
+    private func makeService() -> String {
+        "\(self.testService).\(UUID().uuidString)"
     }
 
     @Test("saveClientCredentials stores in Keychain")
