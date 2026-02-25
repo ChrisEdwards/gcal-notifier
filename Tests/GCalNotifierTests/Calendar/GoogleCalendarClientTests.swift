@@ -37,10 +37,15 @@ private func makeCalendarClientTestContext() -> CalendarClientTestContext {
 
 // MARK: - Test JSON Helpers
 
-private func makeEventsResponseJSON(events: [String] = [], nextSyncToken: String? = nil) -> Data {
+private func makeEventsResponseJSON(
+    events: [String] = [],
+    nextSyncToken: String? = nil,
+    nextPageToken: String? = nil
+) -> Data {
     let itemsJSON = events.joined(separator: ",")
     var json = "{\"items\": [\(itemsJSON)]"
     if let token = nextSyncToken { json += ",\"nextSyncToken\": \"\(token)\"" }
+    if let pageToken = nextPageToken { json += ",\"nextPageToken\": \"\(pageToken)\"" }
     return Data((json + "}").utf8)
 }
 
@@ -118,6 +123,32 @@ struct GoogleCalendarClientTests {
         #expect(!requestURL.contains("orderBy=startTime"))
         #expect(!requestURL.contains("timeMin="))
         #expect(!requestURL.contains("timeMax="))
+    }
+
+    @Test("fetchEvents paginates and aggregates responses")
+    func fetchEventsPaginatesAndAggregatesResponses() async throws {
+        let ctx = makeCalendarClientTestContext()
+        let cancelledEventJSON = "{\"id\":\"event-cancelled\",\"status\":\"cancelled\"}"
+        let eventOne = makeEventJSON(id: "event-1", summary: "First Event")
+        let eventTwo = makeEventJSON(id: "event-2", summary: "Second Event")
+        await ctx.httpClient.queueResponse(
+            data: makeEventsResponseJSON(events: [cancelledEventJSON, eventOne], nextPageToken: "page-2"),
+            statusCode: 200
+        )
+        await ctx.httpClient.queueResponse(
+            data: makeEventsResponseJSON(events: [eventTwo], nextSyncToken: "sync-final"),
+            statusCode: 200
+        )
+        let response = try await ctx.client.fetchEvents(calendarId: "primary")
+        #expect(response.events.map(\.id) == ["event-1", "event-2"])
+        #expect(response.deletedEventIds == ["event-cancelled"])
+        #expect(response.nextSyncToken == "sync-final")
+        let requests = await ctx.httpClient.requestsReceived
+        #expect(requests.count == 2)
+        let firstURL = requests[0].url?.absoluteString ?? ""
+        let secondURL = requests[1].url?.absoluteString ?? ""
+        #expect(!firstURL.contains("pageToken="))
+        #expect(secondURL.contains("pageToken=page-2"))
     }
 
     @Test("fetchCalendarList success returns calendars")

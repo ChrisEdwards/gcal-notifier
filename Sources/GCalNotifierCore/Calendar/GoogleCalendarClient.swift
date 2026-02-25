@@ -84,16 +84,37 @@ public actor GoogleCalendarClient {
         syncToken: String? = nil,
         timeZone: TimeZone = .current
     ) async throws -> EventsResponse {
-        let url = try self.buildEventsURL(
-            calendarId: calendarId,
-            from: from,
-            to: to,
-            syncToken: syncToken,
-            timeZone: timeZone
+        var allEvents: [CalendarEvent] = []
+        var deletedEventIds: [String] = []
+        var nextPageToken: String?
+        var nextSyncToken: String?
+
+        repeat {
+            let options = EventsQueryOptions(
+                from: from,
+                to: to,
+                syncToken: syncToken,
+                pageToken: nextPageToken,
+                timeZone: timeZone
+            )
+            let url = try self.buildEventsURL(calendarId: calendarId, options: options)
+            let request = try await buildRequest(url: url)
+            let data = try await executeRequest(request, calendarId: calendarId)
+            let page = try self.parseEventsPage(data, calendarId: calendarId)
+
+            allEvents.append(contentsOf: page.events)
+            deletedEventIds.append(contentsOf: page.deletedEventIds)
+            nextPageToken = page.nextPageToken
+            if let token = page.nextSyncToken {
+                nextSyncToken = token
+            }
+        } while nextPageToken != nil
+
+        return EventsResponse(
+            events: allEvents,
+            nextSyncToken: nextSyncToken,
+            deletedEventIds: deletedEventIds
         )
-        let request = try await buildRequest(url: url)
-        let data = try await executeRequest(request, calendarId: calendarId)
-        return try self.parseEventsResponse(data, calendarId: calendarId)
     }
 
     // MARK: - Private Methods
@@ -266,13 +287,15 @@ public actor GoogleCalendarClient {
 }
 
 private extension GoogleCalendarClient {
-    func buildEventsURL(
-        calendarId: String,
-        from: Date?,
-        to: Date?,
-        syncToken: String?,
-        timeZone: TimeZone
-    ) throws -> URL {
+    struct EventsQueryOptions {
+        let from: Date?
+        let to: Date?
+        let syncToken: String?
+        let pageToken: String?
+        let timeZone: TimeZone
+    }
+
+    func buildEventsURL(calendarId: String, options: EventsQueryOptions) throws -> URL {
         guard let encodedCalendarId = calendarId.addingPercentEncoding(
             withAllowedCharacters: Self.calendarIdAllowedCharacters
         ) else {
@@ -288,12 +311,7 @@ private extension GoogleCalendarClient {
             throw CalendarError.invalidRequest("Failed to construct events URL")
         }
 
-        components.queryItems = self.eventsQueryItems(
-            from: from,
-            to: to,
-            syncToken: syncToken,
-            timeZone: timeZone
-        )
+        components.queryItems = self.eventsQueryItems(options: options)
 
         guard let url = components.url else {
             throw CalendarError.invalidRequest("Failed to construct events URL")
@@ -302,34 +320,33 @@ private extension GoogleCalendarClient {
         return url
     }
 
-    func eventsQueryItems(
-        from: Date?,
-        to: Date?,
-        syncToken: String?,
-        timeZone: TimeZone
-    ) -> [URLQueryItem] {
+    func eventsQueryItems(options: EventsQueryOptions) -> [URLQueryItem] {
         var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "timeZone", value: timeZone.identifier),
+            URLQueryItem(name: "timeZone", value: options.timeZone.identifier),
             URLQueryItem(name: "singleEvents", value: "true"),
         ]
 
-        if let syncToken {
+        if let syncToken = options.syncToken {
             queryItems.append(URLQueryItem(name: "syncToken", value: syncToken))
             queryItems.append(URLQueryItem(name: "showDeleted", value: "true"))
         } else {
             queryItems.append(URLQueryItem(name: "orderBy", value: "startTime"))
-            if let from {
+            if let from = options.from {
                 queryItems.append(URLQueryItem(name: "timeMin", value: self.formatISO8601(from)))
             }
-            if let to {
+            if let to = options.to {
                 queryItems.append(URLQueryItem(name: "timeMax", value: self.formatISO8601(to)))
             }
+        }
+
+        if let pageToken = options.pageToken {
+            queryItems.append(URLQueryItem(name: "pageToken", value: pageToken))
         }
 
         return queryItems
     }
 
-    func parseEventsResponse(_ data: Data, calendarId: String) throws -> EventsResponse {
+    private func parseEventsPage(_ data: Data, calendarId: String) throws -> ParsedEventsPage {
         do {
             let response = try JSONDecoder.calendarDecoder.decode(GoogleEventsResponse.self, from: data)
             var events: [CalendarEvent] = []
@@ -345,9 +362,10 @@ private extension GoogleCalendarClient {
                 }
             }
 
-            return EventsResponse(
+            return ParsedEventsPage(
                 events: events,
                 nextSyncToken: response.nextSyncToken,
+                nextPageToken: response.nextPageToken,
                 deletedEventIds: deletedEventIds
             )
         } catch {
@@ -358,51 +376,12 @@ private extension GoogleCalendarClient {
 
 // MARK: - Response Types
 
-/// Response from fetching events, containing events, deleted IDs, and optional sync token.
-public struct EventsResponse: Sendable, Equatable {
-    public let events: [CalendarEvent]
-    public let nextSyncToken: String?
-    public let deletedEventIds: [String]
-
-    public init(events: [CalendarEvent], nextSyncToken: String?, deletedEventIds: [String] = []) {
-        self.events = events
-        self.nextSyncToken = nextSyncToken
-        self.deletedEventIds = deletedEventIds
-    }
+private struct ParsedEventsPage: Sendable {
+    let events: [CalendarEvent]
+    let nextSyncToken: String?
+    let nextPageToken: String?
+    let deletedEventIds: [String]
 }
-
-/// Basic calendar information.
-public struct CalendarInfo: Sendable, Equatable {
-    public let id: String
-    public let summary: String
-    public let isPrimary: Bool
-    public let accessRole: CalendarAccessRole
-
-    public init(id: String, summary: String, isPrimary: Bool, accessRole: CalendarAccessRole) {
-        self.id = id
-        self.summary = summary
-        self.isPrimary = isPrimary
-        self.accessRole = accessRole
-    }
-}
-
-/// Access role for a calendar.
-public enum CalendarAccessRole: String, Sendable, Equatable {
-    case freeBusyReader
-    case reader
-    case writer
-    case owner
-}
-
-// MARK: - Access Token Provider Protocol
-
-/// Protocol for providing OAuth access tokens.
-public protocol AccessTokenProvider: Sendable {
-    func getAccessToken() async throws -> String
-}
-
-/// GoogleOAuthProvider already implements getAccessToken, so it conforms to AccessTokenProvider
-extension GoogleOAuthProvider: AccessTokenProvider {}
 
 // MARK: - Google API Response Models
 
@@ -419,6 +398,7 @@ private struct CalendarListItem: Codable {
 
 private struct GoogleEventsResponse: Codable {
     let items: [GoogleEventItem]
+    let nextPageToken: String?
     let nextSyncToken: String?
 }
 
