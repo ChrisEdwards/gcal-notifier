@@ -294,7 +294,7 @@ struct AlertEngineAcknowledgeAlertTests {
 
         // Acknowledge stage1 alert - stage2 should remain
         let stage1AlertId = event.alertIdentifier(for: .stage1)
-        await engine.acknowledgeAlert(alertId: stage1AlertId)
+        await engine.acknowledgeAlert(alertId: stage1AlertId, eventStartTime: event.startTime)
 
         let acknowledged = await engine.acknowledgedAlerts
         #expect(acknowledged.contains(stage1AlertId))
@@ -327,7 +327,7 @@ struct AlertEngineAcknowledgeAlertTests {
 
         // Acknowledge only stage1 before scheduling
         let stage1AlertId = event.alertIdentifier(for: .stage1)
-        await engine.acknowledgeAlert(alertId: stage1AlertId)
+        await engine.acknowledgeAlert(alertId: stage1AlertId, eventStartTime: event.startTime)
         await scheduler.reset()
 
         await engine.scheduleAlerts(for: [event], settings: settings)

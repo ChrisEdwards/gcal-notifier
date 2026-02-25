@@ -60,8 +60,8 @@ struct AlertEngineReconcileTests {
         // Acknowledge alerts using alert IDs (eventId-stage format)
         let event1AlertId = "cal-1::event-1-stage1"
         let event2AlertId = "cal-1::event-2-stage1"
-        await engine.acknowledgeAlert(alertId: event1AlertId)
-        await engine.acknowledgeAlert(alertId: event2AlertId)
+        await engine.acknowledgeAlert(alertId: event1AlertId, eventStartTime: eventStart)
+        await engine.acknowledgeAlert(alertId: event2AlertId, eventStartTime: eventStart)
 
         let event2 = makeAlertTestEvent(id: "event-2", startTime: eventStart)
         let settings = try makeAlertTestSettings()
@@ -73,6 +73,45 @@ struct AlertEngineReconcileTests {
         let acknowledged = await engine.acknowledgedAlerts
         #expect(!acknowledged.contains(event1AlertId))
         #expect(acknowledged.contains(event2AlertId))
+    }
+
+    @Test("Reconcile clears acknowledgment when event time changes")
+    func reconcileClearsAcknowledgmentWhenEventTimeChanges() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let initialStart = baseTime.addingTimeInterval(3600)
+        let updatedStart = baseTime.addingTimeInterval(7200)
+
+        let engine = AlertEngine(
+            alertsStore: store, scheduler: scheduler, delivery: delivery,
+            dateProvider: { baseTime }
+        )
+
+        let event = makeAlertTestEvent(id: "event-1", startTime: initialStart)
+        let settings = try makeAlertTestSettings()
+
+        await engine.scheduleAlerts(for: [event], settings: settings)
+
+        let stage1AlertId = event.alertIdentifier(for: .stage1)
+        await engine.acknowledgeAlert(alertId: stage1AlertId, eventStartTime: initialStart)
+        await scheduler.reset()
+
+        let updatedEvent = makeAlertTestEvent(id: "event-1", startTime: updatedStart)
+        await engine.reconcile(newEvents: [updatedEvent], settings: settings)
+
+        let scheduled = await scheduler.scheduledAlerts
+        let scheduledIds = scheduled.map(\.alertId)
+        #expect(scheduledIds.contains(updatedEvent.alertIdentifier(for: .stage1)))
+        #expect(scheduledIds.contains(updatedEvent.alertIdentifier(for: .stage2)))
+
+        let acknowledged = await engine.acknowledgedAlerts
+        #expect(!acknowledged.contains(stage1AlertId))
     }
 
     @Test("Reconcile clears acknowledgments without prefix collisions")
@@ -94,8 +133,8 @@ struct AlertEngineReconcileTests {
 
         let event1AlertId = "cal-1::event-1-stage1"
         let event10AlertId = "cal-1::event-10-stage1"
-        await engine.acknowledgeAlert(alertId: event1AlertId)
-        await engine.acknowledgeAlert(alertId: event10AlertId)
+        await engine.acknowledgeAlert(alertId: event1AlertId, eventStartTime: eventStart)
+        await engine.acknowledgeAlert(alertId: event10AlertId, eventStartTime: eventStart)
 
         let event1 = makeAlertTestEvent(id: "event-1", startTime: eventStart)
         let settings = try makeAlertTestSettings()

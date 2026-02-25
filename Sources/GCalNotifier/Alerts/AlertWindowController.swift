@@ -396,7 +396,7 @@ extension AlertWindowController {
 
         let alertId = event.alertIdentifier(for: stage)
         Task {
-            await engine.acknowledgeAlert(alertId: alertId)
+            await engine.acknowledgeAlert(alertId: alertId, eventStartTime: event.startTime)
             Logger.alerts.info("Dismissed alert \(stage.rawValue) for: \(event.id)")
         }
         close()
@@ -414,7 +414,7 @@ extension AlertWindowController: NSWindowDelegate {
         if let event = currentEvent, let stage = currentStage, let engine = alertEngine {
             let alertId = event.alertIdentifier(for: stage)
             Task {
-                await engine.acknowledgeAlert(alertId: alertId)
+                await engine.acknowledgeAlert(alertId: alertId, eventStartTime: event.startTime)
             }
         }
     }

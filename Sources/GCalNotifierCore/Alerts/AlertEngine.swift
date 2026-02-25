@@ -13,7 +13,7 @@ public actor AlertEngine {
     // MARK: - State
 
     private var alerts: [String: ScheduledAlert] = [:]
-    private var acknowledgedAlertIds: Set<String> = []
+    private var acknowledgedAlertStartTimes: [String: Date] = [:]
     private var isInitialized = false
 
     /// Provider for back-to-back context. Set this to enable back-to-back detection during alerts.
@@ -34,7 +34,7 @@ public actor AlertEngine {
 
     /// Alert IDs that have been acknowledged (dismissing only skips that specific stage).
     public var acknowledgedAlerts: Set<String> {
-        self.acknowledgedAlertIds
+        Set(self.acknowledgedAlertStartTimes.keys)
     }
 
     // MARK: - Initialization
@@ -102,8 +102,8 @@ public actor AlertEngine {
 
     /// Marks a specific alert as acknowledged, preventing only that stage from re-firing.
     /// Other stages for the same event will still fire.
-    public func acknowledgeAlert(alertId: String) async {
-        self.acknowledgedAlertIds.insert(alertId)
+    public func acknowledgeAlert(alertId: String, eventStartTime: Date) async {
+        self.acknowledgedAlertStartTimes[alertId] = eventStartTime
         await self.cancelAlert(alertId: alertId)
     }
 
@@ -201,9 +201,11 @@ public actor AlertEngine {
 
         // Clear acknowledgments for events that no longer exist.
         // Alert IDs are formatted as "{eventId}-{stage}", so extract eventId safely.
-        self.acknowledgedAlertIds = self.acknowledgedAlertIds.filter { alertId in
-            guard let eventId = self.eventId(from: alertId) else { return false }
-            return newEventIds.contains(eventId)
+        self.acknowledgedAlertStartTimes = self.acknowledgedAlertStartTimes.filter { alertId, startTime in
+            guard let eventId = self.eventId(from: alertId),
+                  let event = eventsById[eventId]
+            else { return false }
+            return event.startTime == startTime
         }
 
         // Schedule alerts for new/updated events
@@ -244,15 +246,6 @@ public actor AlertEngine {
         )
     }
 
-    private func eventId(from alertId: String) -> String? {
-        for stage in AlertStage.allCases {
-            let suffix = "-\(stage.rawValue)"
-            guard alertId.hasSuffix(suffix) else { continue }
-            return String(alertId.dropLast(suffix.count))
-        }
-        return nil
-    }
-
     private func scheduleAlert(_ alert: ScheduledAlert) async {
         // Only schedule if not already scheduled or if this is a newer version
         if let existing = alerts[alert.id] {
@@ -277,8 +270,8 @@ public actor AlertEngine {
 
         let alertId = event.alertIdentifier(for: stage)
 
-        // Skip if this specific alert was already dismissed
-        guard !self.acknowledgedAlertIds.contains(alertId) else { return }
+        // Skip if this specific alert was already dismissed for this event time
+        guard !self.isAcknowledged(alertId: alertId, eventStartTime: event.startTime) else { return }
 
         if let existing = alerts[alertId],
            existing.scheduledFireTime <= now,
@@ -373,6 +366,30 @@ public actor AlertEngine {
         } catch {
             // Log error but don't throw - alert delivery is more important than persistence
         }
+    }
+}
+
+private extension AlertEngine {
+    func eventId(from alertId: String) -> String? {
+        for stage in AlertStage.allCases {
+            let suffix = "-\(stage.rawValue)"
+            guard alertId.hasSuffix(suffix) else { continue }
+            return String(alertId.dropLast(suffix.count))
+        }
+        return nil
+    }
+
+    func isAcknowledged(alertId: String, eventStartTime: Date) -> Bool {
+        guard let acknowledgedStartTime = self.acknowledgedAlertStartTimes[alertId] else {
+            return false
+        }
+
+        if acknowledgedStartTime == eventStartTime {
+            return true
+        }
+
+        self.acknowledgedAlertStartTimes.removeValue(forKey: alertId)
+        return false
     }
 }
 

@@ -84,7 +84,7 @@ public final class WindowAlertDelivery: AlertDelivery {
         SoundPlayer.shared.playDowngradedAlertSound(for: reason)
         self.onAlertDelivered?()
         if let engine = self.alertEngine {
-            await engine.acknowledgeAlert(alertId: alert.id)
+            await engine.acknowledgeAlert(alertId: alert.id, eventStartTime: alert.eventStartTime)
         }
     }
 
