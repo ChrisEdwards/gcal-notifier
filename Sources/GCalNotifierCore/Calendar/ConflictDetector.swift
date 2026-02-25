@@ -42,13 +42,17 @@ public struct ConflictDetector: Sendable {
 
     /// Finds all pairs of conflicting events from a list.
     ///
-    /// Only considers alertable events (events with meeting links that are not all-day).
+    /// Only considers alertable events unless `assumeFiltered` is true.
     ///
-    /// - Parameter events: The list of events to check for conflicts
+    /// - Parameters:
+    ///   - events: The list of events to check for conflicts
+    ///   - assumeFiltered: When true, treats events as already filtered for alertability
     /// - Returns: Array of conflict pairs, each containing two overlapping events
-    public func findConflicts(in events: [CalendarEvent]) -> [ConflictPair] {
-        // Filter to only alertable events
-        let alertableEvents = events.filter(\.shouldAlert)
+    public func findConflicts(
+        in events: [CalendarEvent],
+        assumeFiltered: Bool = false
+    ) -> [ConflictPair] {
+        let alertableEvents = assumeFiltered ? events : events.filter(\.shouldAlert)
         var conflicts: [ConflictPair] = []
 
         // Compare each pair of events

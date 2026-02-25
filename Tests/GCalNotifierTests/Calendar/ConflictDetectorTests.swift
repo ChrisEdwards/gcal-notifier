@@ -239,6 +239,27 @@ struct ConflictDetectorFindConflictsTests {
         #expect(conflicts.isEmpty)
     }
 
+    @Test("AssumeFiltered includes non-alertable events in conflicts")
+    func findConflicts_assumeFilteredIncludesNonAlertable() {
+        let now = Date()
+        let eventA = makeEvent(
+            id: "a",
+            startTime: now,
+            endTime: now.addingTimeInterval(3600),
+            meetingLinks: []
+        )
+        let eventB = makeEvent(
+            id: "b",
+            startTime: now.addingTimeInterval(1800),
+            endTime: now.addingTimeInterval(5400),
+            meetingLinks: []
+        )
+
+        let conflicts = self.detector.findConflicts(in: [eventA, eventB], assumeFiltered: true)
+
+        #expect(conflicts.count == 1)
+    }
+
     @Test("All-day events are excluded from conflict detection")
     func findConflicts_excludesAllDayEvents() throws {
         let now = Date()
