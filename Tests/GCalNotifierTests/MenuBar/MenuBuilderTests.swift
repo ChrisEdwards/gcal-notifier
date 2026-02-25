@@ -174,6 +174,27 @@ struct MenuBuilderTests {
         #expect(hasEmptyState)
     }
 
+    @Test("Includes events overlapping today")
+    func includesEventsOverlappingToday() {
+        let now = testNow()
+        guard let link = makeTestLink() else { return }
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: now)
+
+        let overnightEvent = makeTestEvent(
+            id: "overnight",
+            title: "Overnight Meeting",
+            startTime: startOfDay.addingTimeInterval(-2 * 3600),
+            endTime: startOfDay.addingTimeInterval(1 * 3600),
+            meetingLinks: [link]
+        )
+
+        let items = MenuBuilder.buildMenuItems(events: [overnightEvent], conflictingEventIds: [], now: now)
+        let meetingItems = items.filter { if case .meeting = $0 { return true }; return false }
+
+        #expect(meetingItems.count == 1, "Expected overnight event to appear in menu")
+    }
+
     @Test("Shows today's meetings header")
     func showsTodaysMeetingsHeader() {
         let items = MenuBuilder.buildMenuItems(events: [], conflictingEventIds: [])

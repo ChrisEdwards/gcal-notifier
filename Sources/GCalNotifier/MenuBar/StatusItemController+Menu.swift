@@ -128,7 +128,7 @@ public enum MenuBuilder {
 
         return events
             .filter { !$0.isAllDay }
-            .filter { $0.startTime >= startOfDay && $0.startTime < endOfDay }
+            .filter { $0.startTime < endOfDay && $0.endTime > startOfDay }
             .sorted { $0.startTime < $1.startTime }
     }
 
