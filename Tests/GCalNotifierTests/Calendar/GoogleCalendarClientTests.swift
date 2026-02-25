@@ -66,8 +66,10 @@ private func makeEventJSON(
     return "{\(parts.joined(separator: ","))}"
 }
 
-private func makeCalendarListResponseJSON(calendars: [String]) -> Data {
-    Data("{\"items\": [\(calendars.joined(separator: ","))]}".utf8)
+private func makeCalendarListResponseJSON(calendars: [String], nextPageToken: String? = nil) -> Data {
+    var json = "{\"items\": [\(calendars.joined(separator: ","))]"
+    if let token = nextPageToken { json += ",\"nextPageToken\": \"\(token)\"" }
+    return Data((json + "}").utf8)
 }
 
 private func makeCalendarJSON(
@@ -149,23 +151,6 @@ struct GoogleCalendarClientTests {
         let secondURL = requests[1].url?.absoluteString ?? ""
         #expect(!firstURL.contains("pageToken="))
         #expect(secondURL.contains("pageToken=page-2"))
-    }
-
-    @Test("fetchCalendarList success returns calendars")
-    func fetchCalendarListSuccessReturnsCalendars() async throws {
-        let ctx = makeCalendarClientTestContext()
-        let calendar1 = makeCalendarJSON(id: "primary", summary: "Primary Calendar", primary: true)
-        let calendar2 = makeCalendarJSON(id: "work", summary: "Work Calendar", accessRole: "reader")
-        await ctx.httpClient.queueResponse(
-            data: makeCalendarListResponseJSON(calendars: [calendar1, calendar2]),
-            statusCode: 200
-        )
-        let calendars = try await ctx.client.fetchCalendarList()
-        #expect(calendars.count == 2)
-        #expect(calendars[0].id == "primary")
-        #expect(calendars[0].isPrimary == true)
-        #expect(calendars[0].accessRole == .owner)
-        #expect(calendars[1].accessRole == .reader)
     }
 
     @Test("fetchEvents 401 throws authenticationRequired")
@@ -339,5 +324,50 @@ struct GoogleCalendarClientTests {
         #expect(response.events.count == 1)
         #expect(response.events[0].id == "event-active")
         #expect(response.deletedEventIds == ["event-cancelled"])
+    }
+}
+
+@Suite("GoogleCalendarClient Calendar List Tests", .serialized)
+struct GoogleCalendarClientCalendarListTests {
+    @Test("fetchCalendarList success returns calendars")
+    func fetchCalendarListSuccessReturnsCalendars() async throws {
+        let ctx = makeCalendarClientTestContext()
+        let calendar1 = makeCalendarJSON(id: "primary", summary: "Primary Calendar", primary: true)
+        let calendar2 = makeCalendarJSON(id: "work", summary: "Work Calendar", accessRole: "reader")
+        await ctx.httpClient.queueResponse(
+            data: makeCalendarListResponseJSON(calendars: [calendar1, calendar2]),
+            statusCode: 200
+        )
+        let calendars = try await ctx.client.fetchCalendarList()
+        #expect(calendars.count == 2)
+        #expect(calendars[0].id == "primary")
+        #expect(calendars[0].isPrimary == true)
+        #expect(calendars[0].accessRole == .owner)
+        #expect(calendars[1].accessRole == .reader)
+    }
+
+    @Test("fetchCalendarList paginates and aggregates calendars")
+    func fetchCalendarListPaginatesAndAggregatesCalendars() async throws {
+        let ctx = makeCalendarClientTestContext()
+        let calendar1 = makeCalendarJSON(id: "primary", summary: "Primary Calendar", primary: true)
+        let calendar2 = makeCalendarJSON(id: "work", summary: "Work Calendar", accessRole: "reader")
+        await ctx.httpClient.queueResponse(
+            data: makeCalendarListResponseJSON(calendars: [calendar1], nextPageToken: "page-2"),
+            statusCode: 200
+        )
+        await ctx.httpClient.queueResponse(
+            data: makeCalendarListResponseJSON(calendars: [calendar2]),
+            statusCode: 200
+        )
+
+        let calendars = try await ctx.client.fetchCalendarList()
+
+        #expect(calendars.map(\.id) == ["primary", "work"])
+        let requests = await ctx.httpClient.requestsReceived
+        #expect(requests.count == 2)
+        let firstURL = requests[0].url?.absoluteString ?? ""
+        let secondURL = requests[1].url?.absoluteString ?? ""
+        #expect(!firstURL.contains("pageToken="))
+        #expect(secondURL.contains("pageToken=page-2"))
     }
 }

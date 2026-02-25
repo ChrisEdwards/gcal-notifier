@@ -47,25 +47,40 @@ public actor GoogleCalendarClient {
     /// - Returns: Array of calendar information.
     /// - Throws: `CalendarError` for API or network failures.
     public func fetchCalendarList() async throws -> [CalendarInfo] {
-        guard let url = URL(string: Self.baseURL + Self.calendarListEndpoint) else {
-            throw CalendarError.invalidRequest("Failed to construct calendar list URL")
-        }
-        let request = try await buildRequest(url: url)
-        let data = try await executeRequest(request)
+        var calendars: [CalendarInfo] = []
+        var nextPageToken: String?
 
-        do {
-            let response = try JSONDecoder().decode(CalendarListResponse.self, from: data)
-            return response.items.map { item in
-                CalendarInfo(
-                    id: item.id,
-                    summary: item.summary,
-                    isPrimary: item.primary ?? false,
-                    accessRole: CalendarAccessRole(rawValue: item.accessRole) ?? .reader
-                )
+        repeat {
+            guard var components = URLComponents(string: Self.baseURL + Self.calendarListEndpoint) else {
+                throw CalendarError.invalidRequest("Failed to construct calendar list URL")
             }
-        } catch {
-            throw CalendarError.parsingError("Failed to parse calendar list: \(error.localizedDescription)")
-        }
+            if let pageToken = nextPageToken {
+                components.queryItems = [URLQueryItem(name: "pageToken", value: pageToken)]
+            }
+            guard let url = components.url else {
+                throw CalendarError.invalidRequest("Failed to construct calendar list URL")
+            }
+
+            let request = try await buildRequest(url: url)
+            let data = try await executeRequest(request)
+
+            do {
+                let response = try JSONDecoder().decode(CalendarListResponse.self, from: data)
+                calendars.append(contentsOf: response.items.map { item in
+                    CalendarInfo(
+                        id: item.id,
+                        summary: item.summary,
+                        isPrimary: item.primary ?? false,
+                        accessRole: CalendarAccessRole(rawValue: item.accessRole) ?? .reader
+                    )
+                })
+                nextPageToken = response.nextPageToken
+            } catch {
+                throw CalendarError.parsingError("Failed to parse calendar list: \(error.localizedDescription)")
+            }
+        } while nextPageToken != nil
+
+        return calendars
     }
 
     /// Fetches events from a calendar.
@@ -387,6 +402,7 @@ private struct ParsedEventsPage: Sendable {
 
 private struct CalendarListResponse: Codable {
     let items: [CalendarListItem]
+    let nextPageToken: String?
 }
 
 private struct CalendarListItem: Codable {
