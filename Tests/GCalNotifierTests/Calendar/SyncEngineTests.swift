@@ -304,7 +304,6 @@ struct SyncEngineTests {
         let ctx = try SyncEngineTestContext()
         let event = makeEvent(id: "event-123", title: "Team Standup")
         await ctx.mockClient.queueResponse(EventsResponse(events: [event], nextSyncToken: "token-1"))
-
         let result = try await ctx.engine.sync(calendarId: "primary")
 
         #expect(result.events.count == 1)
@@ -443,7 +442,6 @@ struct SyncEngineMeetingContextTests {
     func currentMeetingRespectsBlockedKeywords() async throws {
         let context = try SyncEngineMeetingContext()
         context.settings.blockedKeywords = ["Blocked"]
-
         let now = Date()
         let blockedEvent = makeEvent(
             id: "blocked",
@@ -452,16 +450,35 @@ struct SyncEngineMeetingContextTests {
             endTime: now.addingTimeInterval(300)
         )
         try await context.eventCache.save([blockedEvent])
-
         let current = await context.engine.currentMeeting(now: now)
         #expect(current == nil)
+    }
+
+    @Test("currentMeeting prefers most recent overlapping meeting")
+    func currentMeetingPrefersMostRecentOverlap() async throws {
+        let context = try SyncEngineMeetingContext()
+        let now = Date()
+        let older = makeEvent(
+            id: "older",
+            title: "Older Meeting",
+            startTime: now.addingTimeInterval(-1800),
+            endTime: now.addingTimeInterval(1800)
+        )
+        let recent = makeEvent(
+            id: "recent",
+            title: "Recent Meeting",
+            startTime: now.addingTimeInterval(-300),
+            endTime: now.addingTimeInterval(900)
+        )
+        try await context.eventCache.save([older, recent])
+        let current = await context.engine.currentMeeting(now: now)
+        #expect(current?.id == "recent")
     }
 
     @Test("detectBackToBackState ignores filtered events")
     func detectBackToBackStateIgnoresFilteredEvents() async throws {
         let context = try SyncEngineMeetingContext()
         context.settings.blockedKeywords = ["Blocked"]
-
         let now = Date()
         let current = makeEvent(
             id: "current",
@@ -475,9 +492,7 @@ struct SyncEngineMeetingContextTests {
             startTime: now.addingTimeInterval(360),
             endTime: now.addingTimeInterval(1800)
         )
-
         try await context.eventCache.save([current, next])
-
         let state = await context.engine.detectBackToBackState(now: now)
         #expect(state.currentMeeting == nil)
         #expect(state.isBackToBack == false)

@@ -190,9 +190,11 @@ public actor SyncEngine {
     public func currentMeeting(now: Date = Date()) async -> CalendarEvent? {
         do {
             let events = try await eventCache.load()
-            return events.first { event in
-                event.isInProgress(at: now) && self.eventFilter.shouldAlert(for: event)
-            }
+            return events
+                .filter { event in
+                    event.isInProgress(at: now) && self.eventFilter.shouldAlert(for: event)
+                }
+                .max(by: { $0.startTime < $1.startTime })
         } catch {
             return nil
         }
