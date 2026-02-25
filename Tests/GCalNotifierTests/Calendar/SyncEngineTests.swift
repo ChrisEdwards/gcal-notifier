@@ -8,6 +8,14 @@ private enum TestError: Error {
     case setupFailed(String)
 }
 
+// MARK: - Stub Token Provider
+
+private actor StubTokenProvider: AccessTokenProvider {
+    func getAccessToken() async throws -> String {
+        "test-access-token"
+    }
+}
+
 // MARK: - Test Constants
 
 // swiftlint:disable:next force_unwrapping
@@ -228,6 +236,39 @@ private struct SyncEngineTestContext {
     }
 }
 
+private struct SyncEngineMeetingContext {
+    let engine: SyncEngine
+    let eventCache: EventCache
+    let settings: SettingsStore
+
+    init() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let cacheURL = tempDir.appendingPathComponent("sync-meeting-\(UUID().uuidString).json")
+        let stateURL = tempDir.appendingPathComponent("sync-state-\(UUID().uuidString).json")
+
+        guard let defaults = UserDefaults(suiteName: "sync-meeting-\(UUID().uuidString)") else {
+            throw TestError.setupFailed("Could not create test UserDefaults")
+        }
+
+        let settings = SettingsStore(defaults: defaults)
+        let eventCache = EventCache(fileURL: cacheURL)
+        let appState = AppStateStore(fileURL: stateURL)
+        let httpClient = MockHTTPClient()
+        let tokenProvider = StubTokenProvider()
+        let calendarClient = GoogleCalendarClient(httpClient: httpClient, tokenProvider: tokenProvider)
+        let eventFilter = EventFilter(settings: settings)
+
+        self.engine = SyncEngine(
+            calendarClient: calendarClient,
+            eventCache: eventCache,
+            appState: appState,
+            eventFilter: eventFilter
+        )
+        self.eventCache = eventCache
+        self.settings = settings
+    }
+}
+
 // MARK: - Test Event Helpers
 
 private func makeEvent(
@@ -396,69 +437,49 @@ struct SyncEngineTests {
     }
 }
 
-@Suite("SyncEngine Polling Interval Tests")
-struct SyncEnginePollingIntervalTests {
-    @Test("calculatePollingInterval returns normal when meeting is more than 10 minutes away")
-    func calculatePollingIntervalFarMeetingReturnsNormal() {
+@Suite("SyncEngine Meeting Context Tests")
+struct SyncEngineMeetingContextTests {
+    @Test("currentMeeting respects blocked keywords")
+    func currentMeetingRespectsBlockedKeywords() async throws {
+        let context = try SyncEngineMeetingContext()
+        context.settings.blockedKeywords = ["Blocked"]
+
         let now = Date()
-        let farEvent = makeEvent(startTime: now.addingTimeInterval(8000)) // ~2.2 hours
-        let interval = self.calculatePollingInterval(events: [farEvent], now: now)
-        #expect(interval == .normal)
+        let blockedEvent = makeEvent(
+            id: "blocked",
+            title: "Blocked Meeting",
+            startTime: now.addingTimeInterval(-300),
+            endTime: now.addingTimeInterval(300)
+        )
+        try await context.eventCache.save([blockedEvent])
+
+        let current = await context.engine.currentMeeting(now: now)
+        #expect(current == nil)
     }
 
-    @Test("calculatePollingInterval returns normal when meeting within 1 hour but more than 10 min")
-    func calculatePollingIntervalMeetingWithin1HourReturnsNormal() {
+    @Test("detectBackToBackState ignores filtered events")
+    func detectBackToBackStateIgnoresFilteredEvents() async throws {
+        let context = try SyncEngineMeetingContext()
+        context.settings.blockedKeywords = ["Blocked"]
+
         let now = Date()
-        let soonEvent = makeEvent(startTime: now.addingTimeInterval(2400)) // 40 minutes
-        let interval = self.calculatePollingInterval(events: [soonEvent], now: now)
-        #expect(interval == .normal)
-    }
+        let current = makeEvent(
+            id: "current",
+            title: "Blocked Meeting",
+            startTime: now.addingTimeInterval(-300),
+            endTime: now.addingTimeInterval(300)
+        )
+        let next = makeEvent(
+            id: "next",
+            title: "Next Meeting",
+            startTime: now.addingTimeInterval(360),
+            endTime: now.addingTimeInterval(1800)
+        )
 
-    @Test("calculatePollingInterval returns imminent when meeting within 10 minutes")
-    func calculatePollingIntervalMeetingWithin10MinReturnsImminent() {
-        let now = Date()
-        let imminentEvent = makeEvent(startTime: now.addingTimeInterval(300)) // 5 minutes
-        let interval = self.calculatePollingInterval(events: [imminentEvent], now: now)
-        #expect(interval == .imminent)
-    }
+        try await context.eventCache.save([current, next])
 
-    @Test("calculatePollingInterval returns normal when no events")
-    func calculatePollingIntervalNoEventsReturnsNormal() {
-        let interval = self.calculatePollingInterval(events: [], now: Date())
-        #expect(interval == .normal)
-    }
-
-    @Test("calculatePollingInterval ignores past events")
-    func calculatePollingIntervalIgnoresPastEvents() {
-        let now = Date()
-        let pastEvent = makeEvent(startTime: now.addingTimeInterval(-3600)) // 1 hour ago
-        let interval = self.calculatePollingInterval(events: [pastEvent], now: now)
-        #expect(interval == .normal)
-    }
-
-    @Test("calculatePollingInterval uses earliest upcoming event")
-    func calculatePollingIntervalUsesEarliestEvent() {
-        let now = Date()
-        let farEvent = makeEvent(id: "far", startTime: now.addingTimeInterval(7200)) // 2 hours
-        let nearEvent = makeEvent(id: "near", startTime: now.addingTimeInterval(300)) // 5 minutes
-        let interval = self.calculatePollingInterval(events: [farEvent, nearEvent], now: now)
-        #expect(interval == .imminent)
-    }
-
-    /// Helper function to match SyncEngine's calculation logic
-    private func calculatePollingInterval(events: [CalendarEvent], now: Date) -> PollingInterval {
-        let upcomingEvents = events.filter { $0.startTime > now }
-
-        guard let nextEvent = upcomingEvents.min(by: { $0.startTime < $1.startTime }) else {
-            return .normal
-        }
-
-        let timeUntilNext = nextEvent.startTime.timeIntervalSince(now)
-
-        if timeUntilNext <= 600 { // 10 minutes
-            return .imminent
-        } else {
-            return .normal
-        }
+        let state = await context.engine.detectBackToBackState(now: now)
+        #expect(state.currentMeeting == nil)
+        #expect(state.isBackToBack == false)
     }
 }

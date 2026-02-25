@@ -175,7 +175,8 @@ public actor SyncEngine {
     public func detectBackToBackState(now: Date = Date()) async -> BackToBackState {
         do {
             let events = try await eventCache.load()
-            return BackToBackState.detect(from: events, now: now)
+            let alertableEvents = events.filter { self.eventFilter.shouldAlert(for: $0) }
+            return BackToBackState.detect(from: alertableEvents, now: now, assumeFiltered: true)
         } catch {
             self.logger.error("Failed to load events for back-to-back detection: \(error.localizedDescription)")
             return .none
@@ -190,7 +191,7 @@ public actor SyncEngine {
         do {
             let events = try await eventCache.load()
             return events.first { event in
-                event.isInProgress(at: now) && event.shouldAlert
+                event.isInProgress(at: now) && self.eventFilter.shouldAlert(for: event)
             }
         } catch {
             return nil
