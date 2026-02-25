@@ -161,11 +161,42 @@ public actor AlertEngine {
     /// Removes alerts for deleted events and schedules new ones.
     public func reconcile(newEvents: [CalendarEvent], settings: SettingsStore) async {
         let newEventIds = Set(newEvents.map(\.qualifiedId))
+        let eventsById = Dictionary(uniqueKeysWithValues: newEvents.map { ($0.qualifiedId, $0) })
+        let filter = EventFilter(settings: settings)
 
         // Cancel alerts for events that no longer exist
         let orphanedEventIds = Set(alerts.values.map(\.eventId)).subtracting(newEventIds)
         for eventId in orphanedEventIds {
             await self.cancelAlerts(for: eventId)
+        }
+
+        // Cancel alerts that are no longer allowed by current settings.
+        let stage1Enabled = settings.alertStage1Minutes > 0
+        let stage2Enabled = settings.alertStage2Minutes > 0
+        let existingAlerts = Array(self.alerts.values)
+        var alertIdsToCancel: [String] = []
+
+        for alert in existingAlerts {
+            guard let event = eventsById[alert.eventId] else { continue }
+
+            if !filter.shouldAlert(for: event) {
+                alertIdsToCancel.append(alert.id)
+                continue
+            }
+
+            switch alert.stage {
+            case .stage1 where !stage1Enabled:
+                alertIdsToCancel.append(alert.id)
+            case .stage2 where !stage2Enabled:
+                alertIdsToCancel.append(alert.id)
+            default:
+                break
+            }
+        }
+
+        for alertId in alertIdsToCancel {
+            await self.scheduler.cancel(alertId: alertId)
+            self.alerts.removeValue(forKey: alertId)
         }
 
         // Clear acknowledgments for events that no longer exist
@@ -191,75 +222,6 @@ public actor AlertEngine {
             self.alerts[alert.id] = alert
             await self.scheduleTimer(for: alert)
         }
-    }
-
-    // MARK: - Alert Suppression Providers
-
-    /// Sets back-to-back context provider. Stage 1 alerts are downgraded to banners when user is in a meeting.
-    public func setBackToBackContextProvider(
-        _ provider: @escaping @Sendable (ScheduledAlert) async -> BackToBackAlertContext
-    ) {
-        self.backToBackContextProvider = provider
-    }
-
-    /// Clears the back-to-back context provider.
-    public func clearBackToBackContextProvider() {
-        self.backToBackContextProvider = nil
-    }
-
-    /// Sets presentation mode provider for suppression during screen share/DND.
-    public func setPresentationModeProvider(
-        _ provider: @escaping @Sendable () async -> AlertDowngradeReason?
-    ) {
-        self.presentationModeProvider = provider
-    }
-
-    /// Clears the presentation mode provider.
-    public func clearPresentationModeProvider() {
-        self.presentationModeProvider = nil
-    }
-
-    // MARK: - Missed Alert Handling
-
-    private static let missedAlertGracePeriod: TimeInterval = 5 * 60 // 5 minutes
-
-    /// Checks for alerts that missed during sleep. Returns categorized results for handling.
-    public func checkForMissedAlerts() async -> [MissedAlertResult] {
-        let now = self.dateProvider()
-        var results: [MissedAlertResult] = []
-
-        // Find alerts that were due in the past (missed during sleep)
-        let missedAlerts = self.alerts.values.filter { $0.scheduledFireTime < now }
-
-        for alert in missedAlerts {
-            let timeSinceMeetingStart = now.timeIntervalSince(alert.eventStartTime)
-            let result: MissedAlertResult
-
-            if timeSinceMeetingStart < 0 {
-                // Meeting hasn't started yet - fire alert now
-                result = .fireNow(alert)
-                await self.delivery.deliver(alert: alert)
-            } else if timeSinceMeetingStart < Self.missedAlertGracePeriod {
-                // Meeting started within grace period - still worth alerting
-                result = .meetingJustStarted(alert)
-                await self.delivery.deliver(alert: alert)
-            } else {
-                // Meeting too old - just clean up
-                result = .tooOld(alert)
-            }
-
-            results.append(result)
-
-            // Remove the processed alert
-            await self.scheduler.cancel(alertId: alert.id)
-            self.alerts.removeValue(forKey: alert.id)
-        }
-
-        if !results.isEmpty {
-            await self.persistAlerts()
-        }
-
-        return results
     }
 
     // MARK: - Private Helpers
@@ -401,5 +363,78 @@ public actor AlertEngine {
         } catch {
             // Log error but don't throw - alert delivery is more important than persistence
         }
+    }
+}
+
+// MARK: - Alert Suppression Providers
+
+public extension AlertEngine {
+    /// Sets back-to-back context provider. Stage 1 alerts are downgraded to banners when user is in a meeting.
+    func setBackToBackContextProvider(
+        _ provider: @escaping @Sendable (ScheduledAlert) async -> BackToBackAlertContext
+    ) {
+        self.backToBackContextProvider = provider
+    }
+
+    /// Clears the back-to-back context provider.
+    func clearBackToBackContextProvider() {
+        self.backToBackContextProvider = nil
+    }
+
+    /// Sets presentation mode provider for suppression during screen share/DND.
+    func setPresentationModeProvider(
+        _ provider: @escaping @Sendable () async -> AlertDowngradeReason?
+    ) {
+        self.presentationModeProvider = provider
+    }
+
+    /// Clears the presentation mode provider.
+    func clearPresentationModeProvider() {
+        self.presentationModeProvider = nil
+    }
+}
+
+// MARK: - Missed Alert Handling
+
+public extension AlertEngine {
+    private static let missedAlertGracePeriod: TimeInterval = 5 * 60 // 5 minutes
+
+    /// Checks for alerts that missed during sleep. Returns categorized results for handling.
+    func checkForMissedAlerts() async -> [MissedAlertResult] {
+        let now = self.dateProvider()
+        var results: [MissedAlertResult] = []
+
+        // Find alerts that were due in the past (missed during sleep)
+        let missedAlerts = self.alerts.values.filter { $0.scheduledFireTime < now }
+
+        for alert in missedAlerts {
+            let timeSinceMeetingStart = now.timeIntervalSince(alert.eventStartTime)
+            let result: MissedAlertResult
+
+            if timeSinceMeetingStart < 0 {
+                // Meeting hasn't started yet - fire alert now
+                result = .fireNow(alert)
+                await self.delivery.deliver(alert: alert)
+            } else if timeSinceMeetingStart < Self.missedAlertGracePeriod {
+                // Meeting started within grace period - still worth alerting
+                result = .meetingJustStarted(alert)
+                await self.delivery.deliver(alert: alert)
+            } else {
+                // Meeting too old - just clean up
+                result = .tooOld(alert)
+            }
+
+            results.append(result)
+
+            // Remove the processed alert
+            await self.scheduler.cancel(alertId: alert.id)
+            self.alerts.removeValue(forKey: alert.id)
+        }
+
+        if !results.isEmpty {
+            await self.persistAlerts()
+        }
+
+        return results
     }
 }

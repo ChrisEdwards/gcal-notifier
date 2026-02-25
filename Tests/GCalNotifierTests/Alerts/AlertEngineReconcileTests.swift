@@ -74,6 +74,74 @@ struct AlertEngineReconcileTests {
         #expect(!acknowledged.contains(event1AlertId))
         #expect(acknowledged.contains(event2AlertId))
     }
+
+    @Test("Reconcile cancels stage alerts when stage is disabled")
+    func reconcileCancelsDisabledStageAlerts() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let eventStart = baseTime.addingTimeInterval(3600)
+
+        let engine = AlertEngine(
+            alertsStore: store, scheduler: scheduler, delivery: delivery,
+            dateProvider: { baseTime }
+        )
+
+        let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let settings = try makeAlertTestSettings(stage1Minutes: 10, stage2Minutes: 2)
+
+        await engine.scheduleAlerts(for: [event], settings: settings)
+
+        // Disable stage 1 alerts and reconcile
+        settings.alertStage1Minutes = 0
+        await engine.reconcile(newEvents: [event], settings: settings)
+
+        let cancelled = await scheduler.cancelledAlertIds
+        #expect(cancelled.contains(event.alertIdentifier(for: .stage1)))
+
+        let remaining = await engine.scheduledAlerts
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.stage == .stage2)
+    }
+
+    @Test("Reconcile cancels alerts when calendar is disabled")
+    func reconcileCancelsAlertsWhenCalendarDisabled() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let eventStart = baseTime.addingTimeInterval(3600)
+
+        let engine = AlertEngine(
+            alertsStore: store, scheduler: scheduler, delivery: delivery,
+            dateProvider: { baseTime }
+        )
+
+        let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let settings = try makeAlertTestSettings(stage1Minutes: 10, stage2Minutes: 2)
+
+        await engine.scheduleAlerts(for: [event], settings: settings)
+
+        // Disable the calendar and reconcile
+        settings.enabledCalendars = ["cal-2"]
+        await engine.reconcile(newEvents: [event], settings: settings)
+
+        let cancelled = await scheduler.cancelledAlertIds
+        #expect(cancelled.contains(event.alertIdentifier(for: .stage1)))
+        #expect(cancelled.contains(event.alertIdentifier(for: .stage2)))
+
+        let remaining = await engine.scheduledAlerts
+        #expect(remaining.isEmpty)
+    }
 }
 
 // MARK: - Reconcile on Relaunch Tests
