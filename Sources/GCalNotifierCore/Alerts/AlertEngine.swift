@@ -199,10 +199,11 @@ public actor AlertEngine {
             self.alerts.removeValue(forKey: alertId)
         }
 
-        // Clear acknowledgments for events that no longer exist
-        // Alert IDs are formatted as "{eventId}-{stage}", so check if any event ID is a prefix
+        // Clear acknowledgments for events that no longer exist.
+        // Alert IDs are formatted as "{eventId}-{stage}", so extract eventId safely.
         self.acknowledgedAlertIds = self.acknowledgedAlertIds.filter { alertId in
-            newEventIds.contains { eventId in alertId.hasPrefix(eventId) }
+            guard let eventId = self.eventId(from: alertId) else { return false }
+            return newEventIds.contains(eventId)
         }
 
         // Schedule alerts for new/updated events
@@ -241,6 +242,15 @@ public actor AlertEngine {
             eventTitle: event.title,
             eventStartTime: event.startTime
         )
+    }
+
+    private func eventId(from alertId: String) -> String? {
+        for stage in AlertStage.allCases {
+            let suffix = "-\(stage.rawValue)"
+            guard alertId.hasSuffix(suffix) else { continue }
+            return String(alertId.dropLast(suffix.count))
+        }
+        return nil
     }
 
     private func scheduleAlert(_ alert: ScheduledAlert) async {

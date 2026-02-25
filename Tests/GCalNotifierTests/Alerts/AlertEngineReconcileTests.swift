@@ -75,6 +75,38 @@ struct AlertEngineReconcileTests {
         #expect(acknowledged.contains(event2AlertId))
     }
 
+    @Test("Reconcile clears acknowledgments without prefix collisions")
+    func reconcileClearsAcknowledgmentsWithoutPrefixCollisions() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        let eventStart = baseTime.addingTimeInterval(3600)
+
+        let engine = AlertEngine(
+            alertsStore: store, scheduler: scheduler, delivery: delivery,
+            dateProvider: { baseTime }
+        )
+
+        let event1AlertId = "cal-1::event-1-stage1"
+        let event10AlertId = "cal-1::event-10-stage1"
+        await engine.acknowledgeAlert(alertId: event1AlertId)
+        await engine.acknowledgeAlert(alertId: event10AlertId)
+
+        let event1 = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let settings = try makeAlertTestSettings()
+
+        await engine.reconcile(newEvents: [event1], settings: settings)
+
+        let acknowledged = await engine.acknowledgedAlerts
+        #expect(acknowledged.contains(event1AlertId))
+        #expect(!acknowledged.contains(event10AlertId))
+    }
+
     @Test("Reconcile cancels stage alerts when stage is disabled")
     func reconcileCancelsDisabledStageAlerts() async throws {
         let fileURL = makeAlertTestTempFileURL()
