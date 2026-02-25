@@ -158,7 +158,7 @@ struct MenuBuilderTests {
 
         let items = MenuBuilder.buildMenuItems(
             events: [event1, event2],
-            conflictingEventIds: ["event1", "event2"],
+            conflictingEventIds: [event1.qualifiedId, event2.qualifiedId],
             now: now
         )
 
@@ -238,7 +238,11 @@ struct MeetingItemTests {
         let now = testNow()
         guard let link = makeTestLink() else { return }
         let event = makeTestEvent(id: "conflicting", startTime: now.addingTimeInterval(60 * 60), meetingLinks: [link])
-        let items = MenuBuilder.buildMenuItems(events: [event], conflictingEventIds: ["conflicting"], now: now)
+        let items = MenuBuilder.buildMenuItems(
+            events: [event],
+            conflictingEventIds: [event.qualifiedId],
+            now: now
+        )
         let meetingItem = items.first { if case .meeting = $0 { return true }; return false }
 
         guard case let .meeting(icon, _, _, _, _) = meetingItem else {

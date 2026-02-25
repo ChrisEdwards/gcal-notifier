@@ -46,7 +46,7 @@ public enum MenuBuilder {
     /// Builds menu items from events and state.
     /// - Parameters:
     ///   - events: Calendar events to display
-    ///   - conflictingEventIds: IDs of events that have conflicts
+    ///   - conflictingEventIds: Qualified IDs of events that have conflicts
     ///   - notificationPermissionDenied: Whether notification permission was denied
     ///   - setupRequired: Whether OAuth setup is required (not yet configured)
     ///   - now: Current date for filtering (defaults to now)
@@ -96,7 +96,7 @@ public enum MenuBuilder {
             for event in todaysEvents {
                 let item = Self.makeMeetingItem(
                     event: event,
-                    isConflicting: conflictingEventIds.contains(event.id)
+                    isConflicting: conflictingEventIds.contains(event.qualifiedId)
                 )
                 items.append(item)
             }
@@ -143,7 +143,7 @@ public enum MenuBuilder {
         in events: [CalendarEvent],
         conflictingIds: Set<String>
     ) -> [CalendarEvent] {
-        events.filter { conflictingIds.contains($0.id) }
+        events.filter { conflictingIds.contains($0.qualifiedId) }
     }
 
     private static func formatTime(_ date: Date) -> String {
