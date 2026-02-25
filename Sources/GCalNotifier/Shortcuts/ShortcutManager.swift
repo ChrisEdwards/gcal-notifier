@@ -174,7 +174,7 @@ public final class ShortcutManager {
 
         let events = try await cache.events(from: now, to: endOfDay)
         return events
-            .filter { $0.hasVideoLink && $0.startTime > now && $0.responseStatus != .declined }
+            .filter { $0.shouldAlert && $0.startTime > now }
             .sorted { $0.startTime < $1.startTime }
             .first
     }

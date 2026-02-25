@@ -264,6 +264,43 @@ struct FindNextMeetingTests {
 
         #expect(next?.id == "accepted")
     }
+
+    @Test("Skips all-day events when finding next meeting")
+    @MainActor
+    func skipsAllDayEvents() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("test-\(UUID().uuidString).json")
+        let cache = EventCache(fileURL: fileURL)
+
+        let now = Date()
+        let startOfDay = Calendar.current.startOfDay(for: now)
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+        let url = try #require(URL(string: "https://meet.google.com/all-day"))
+        let allDayEvent = CalendarEvent(
+            id: "all-day",
+            calendarId: "primary",
+            title: "All Day Meeting",
+            startTime: startOfDay,
+            endTime: endOfDay,
+            isAllDay: true,
+            location: nil,
+            meetingLinks: [MeetingLink(url: url)],
+            isOrganizer: false,
+            attendeeCount: 1,
+            responseStatus: .accepted
+        )
+        let regularEvent = makeTestEvent(
+            id: "regular",
+            title: "Regular Meeting",
+            startTime: now.addingTimeInterval(3600)
+        )
+
+        try await cache.save([allDayEvent, regularEvent])
+
+        let next = try await ShortcutManager.shared.findNextMeetingWithVideoLink(in: cache)
+
+        #expect(next?.id == "regular")
+    }
 }
 
 // MARK: - Time Formatting Tests
