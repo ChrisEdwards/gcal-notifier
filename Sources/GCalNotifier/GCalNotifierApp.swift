@@ -318,10 +318,12 @@ extension AppDelegate {
             return
         }
         Task {
+            let scheduler = await NotificationScheduler()
             let delivery = WindowAlertDelivery(
                 windowController: alertWindowController,
                 eventCache: eventCache,
-                settings: self.settingsStore
+                settings: self.settingsStore,
+                scheduler: scheduler
             )
 
             // Update status bar when an alert is delivered
@@ -333,7 +335,6 @@ extension AppDelegate {
 
             self.alertDelivery = delivery
 
-            let scheduler = await NotificationScheduler()
             let engine = AlertEngine(
                 alertsStore: alertsStore,
                 scheduler: scheduler,

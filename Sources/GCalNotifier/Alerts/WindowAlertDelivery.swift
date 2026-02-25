@@ -7,6 +7,7 @@ public final class WindowAlertDelivery: AlertDelivery {
     private let windowController: AlertWindowController
     private let eventCache: EventCache
     private let settings: SettingsStore
+    private let scheduler: NotificationScheduler
 
     /// Alert engine - set after construction to break circular dependency
     private var alertEngine: AlertEngine?
@@ -17,11 +18,13 @@ public final class WindowAlertDelivery: AlertDelivery {
     public init(
         windowController: AlertWindowController,
         eventCache: EventCache,
-        settings: SettingsStore
+        settings: SettingsStore,
+        scheduler: NotificationScheduler
     ) {
         self.windowController = windowController
         self.eventCache = eventCache
         self.settings = settings
+        self.scheduler = scheduler
     }
 
     /// Sets the alert engine after construction (breaks circular dependency)
@@ -36,11 +39,7 @@ public final class WindowAlertDelivery: AlertDelivery {
     }
 
     public nonisolated func deliverDowngraded(alert: ScheduledAlert, reason: AlertDowngradeReason) async {
-        // For downgraded alerts, we could show a notification banner instead
-        // For now, still show the window but could be modified later
-        await MainActor.run {
-            self.showAlert(alert, downgraded: true, reason: reason)
-        }
+        await self.handleDowngradedAlert(alert, reason: reason)
     }
 
     @MainActor
@@ -70,6 +69,33 @@ public final class WindowAlertDelivery: AlertDelivery {
             // Notify that alert was delivered (for UI updates like status bar)
             self.onAlertDelivered?()
         }
+    }
+
+    @MainActor
+    private func handleDowngradedAlert(_ alert: ScheduledAlert, reason: AlertDowngradeReason) async {
+        guard let event = await self.loadEvent(for: alert) else { return }
+
+        let title = self.bannerTitle(for: event)
+        await self.scheduler.showBannerNotification(
+            title: title,
+            body: event.title,
+            identifier: "\(alert.id)-banner"
+        )
+        SoundPlayer.shared.playDowngradedAlertSound(for: reason)
+        self.onAlertDelivered?()
+    }
+
+    private func bannerTitle(for event: CalendarEvent) -> String {
+        let timeUntil = event.startTime.timeIntervalSinceNow
+
+        if timeUntil <= 0 {
+            return "Meeting started!"
+        }
+        if timeUntil < 60 {
+            return "Meeting starts now"
+        }
+        let minutes = Int(timeUntil / 60)
+        return "Meeting in \(minutes) minute\(minutes == 1 ? "" : "s")"
     }
 
     private func loadEvent(for alert: ScheduledAlert) async -> CalendarEvent? {
