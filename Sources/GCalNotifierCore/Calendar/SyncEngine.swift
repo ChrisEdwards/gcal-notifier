@@ -38,8 +38,11 @@ public actor SyncEngine {
 
     // MARK: - Configuration
 
-    /// Default time window for full sync (24 hours).
+    /// Forward time window for full sync (24 hours ahead).
     private let syncWindowHours: Int = 24
+
+    /// Lookback window for full sync to include in-progress meetings.
+    private let syncLookbackHours: Int = 6
 
     // MARK: - Initialization
 
@@ -234,8 +237,9 @@ public actor SyncEngine {
         } else {
             self.logger.debug("Performing full sync for calendar \(calendarId)")
             let now = Date()
+            let startTime = Calendar.current.date(byAdding: .hour, value: -self.syncLookbackHours, to: now) ?? now
             let endTime = Calendar.current.date(byAdding: .hour, value: self.syncWindowHours, to: now) ?? now
-            return try await self.calendarClient.fetchEvents(calendarId: calendarId, from: now, to: endTime)
+            return try await self.calendarClient.fetchEvents(calendarId: calendarId, from: startTime, to: endTime)
         }
     }
 

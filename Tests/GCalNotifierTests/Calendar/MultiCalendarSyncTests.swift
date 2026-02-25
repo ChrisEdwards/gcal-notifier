@@ -150,9 +150,10 @@ private actor MultiCalendarTestSyncEngine {
         let syncToken = try await self.appState.getSyncToken(for: calendarId)
         let wasFullSync = syncToken == nil
         let now = Date()
+        let startTime = Calendar.current.date(byAdding: .hour, value: -6, to: now) ?? now
         let endTime = Calendar.current.date(byAdding: .hour, value: 24, to: now) ?? now
         let response = try await self.mockClient.fetchEvents(
-            calendarId: calendarId, from: now, to: endTime, syncToken: syncToken
+            calendarId: calendarId, from: startTime, to: endTime, syncToken: syncToken
         )
         return try await self.processResponse(response, calendarId: calendarId, wasFullSync: wasFullSync)
     }

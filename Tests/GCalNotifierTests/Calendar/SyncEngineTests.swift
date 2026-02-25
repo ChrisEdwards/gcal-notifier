@@ -154,8 +154,9 @@ private actor TestSyncEngine {
             return try await self.mockClient.fetchEvents(calendarId: calendarId, syncToken: syncToken)
         } else {
             let now = Date()
+            let startTime = Calendar.current.date(byAdding: .hour, value: -6, to: now) ?? now
             let endTime = Calendar.current.date(byAdding: .hour, value: 24, to: now) ?? now
-            return try await self.mockClient.fetchEvents(calendarId: calendarId, from: now, to: endTime)
+            return try await self.mockClient.fetchEvents(calendarId: calendarId, from: startTime, to: endTime)
         }
     }
 
