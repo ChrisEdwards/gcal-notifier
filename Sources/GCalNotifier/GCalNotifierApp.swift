@@ -225,29 +225,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     await self.handleAuthenticationCompleted()
                 } else if !currentState.canMakeApiCalls, self.lastKnownAuthState.canMakeApiCalls {
                     Logger.app.info("Auth state transitioned to unauthenticated, stopping sync")
-                    self.menuController?.updateSetupRequired(true)
-                    self.stopSyncPolling()
-                    self.cachedCalendarIds = []
+                    await self.handleAuthenticationRevoked()
                 }
 
                 self.lastKnownAuthState = currentState
             }
         }
-    }
-
-    /// Called when authentication completes successfully - triggers initial sync and starts polling.
-    private func handleAuthenticationCompleted() async {
-        guard self.syncEngine != nil else {
-            Logger.app.warning("SyncEngine not available, cannot start sync after authentication")
-            return
-        }
-
-        // Update menu to show we're no longer in setup mode
-        self.menuController?.updateSetupRequired(false)
-
-        // Trigger initial sync and start automatic polling
-        Logger.app.info("Triggering initial sync after authentication")
-        await self.performSync()
     }
 
     private func setupShortcuts() {
@@ -362,6 +345,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
 
         self.settingsWindow = window
+    }
+}
+
+// MARK: - Authentication Handling
+
+extension AppDelegate {
+    /// Called when authentication completes successfully - triggers initial sync and starts polling.
+    func handleAuthenticationCompleted() async {
+        guard self.syncEngine != nil else {
+            Logger.app.warning("SyncEngine not available, cannot start sync after authentication")
+            return
+        }
+
+        // Update menu to show we're no longer in setup mode
+        self.menuController?.updateSetupRequired(false)
+        self.statusItemController?.setState(.normal)
+
+        // Trigger initial sync and start automatic polling
+        Logger.app.info("Triggering initial sync after authentication")
+        await self.performSync()
+    }
+
+    func handleAuthenticationRevoked() async {
+        self.menuController?.updateSetupRequired(true)
+        self.statusItemController?.setState(.oauthNeeded)
+        self.stopSyncPolling()
+        self.cachedCalendarIds = []
+
+        if let alertEngine {
+            await alertEngine.reconcile(newEvents: [], settings: self.settingsStore)
+        }
+
+        if let eventCache {
+            do {
+                try await eventCache.clear()
+            } catch {
+                Logger.app.error("Failed to clear event cache: \(error.localizedDescription)")
+            }
+        }
+
+        await self.statusItemController?.loadEventsFromCache()
+        Logger.app.info("Cleared cached events and alerts after sign-out")
     }
 }
 
