@@ -411,6 +411,23 @@ struct NotificationDelegateTests {
         // Should not throw or crash
         await delegate.testFireHandler(alertId: "nonexistent-alert")
     }
+
+    @Test("Back-to-back category allows banner presentation")
+    func backToBackCategoryAllowsBannerPresentation() {
+        let options = NotificationDelegate.presentationOptions(
+            forCategoryIdentifier: NotificationScheduler.backToBackAlertCategory
+        )
+        #expect(options.contains(.banner))
+        #expect(options.contains(.list))
+    }
+
+    @Test("Meeting category suppresses presentation")
+    func meetingCategorySuppressesPresentation() {
+        let options = NotificationDelegate.presentationOptions(
+            forCategoryIdentifier: NotificationScheduler.meetingAlertCategory
+        )
+        #expect(options.isEmpty)
+    }
 }
 
 // MARK: - NotificationAuthorizationStatus Tests

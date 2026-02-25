@@ -270,6 +270,16 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         super.init()
     }
 
+    // MARK: - Presentation Options
+
+    /// Returns the presentation options for a given notification category.
+    static func presentationOptions(forCategoryIdentifier identifier: String) -> UNNotificationPresentationOptions {
+        if identifier == NotificationScheduler.backToBackAlertCategory {
+            return [.banner, .list]
+        }
+        return []
+    }
+
     /// Registers a handler for when a notification with the given ID is delivered.
     public func register(alertId: String, handler: @escaping @Sendable () async -> Void) {
         self.alertHandlers[alertId] = handler
@@ -294,14 +304,16 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         let identifier = notification.request.identifier
+        let categoryIdentifier = notification.request.content.categoryIdentifier
 
-        // Fire the handler asynchronously
-        Task {
-            await self.fireHandlerInternal(for: identifier)
+        if categoryIdentifier == NotificationScheduler.meetingAlertCategory {
+            // Fire the handler asynchronously for intercepted alerts.
+            Task {
+                await self.fireHandlerInternal(for: identifier)
+            }
         }
 
-        // Return empty options to suppress system presentation
-        return []
+        return Self.presentationOptions(forCategoryIdentifier: categoryIdentifier)
     }
 
     /// Called when user interacts with a notification (app in background).
