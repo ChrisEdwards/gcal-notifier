@@ -154,9 +154,10 @@ public extension CalendarEvent {
     }
 
     /// Whether this event should trigger an alert.
-    /// Events with meeting links should alert (except all-day events).
+    /// Events with meeting links should alert (except all-day or declined events).
     var shouldAlert: Bool {
         guard !self.isAllDay else { return false }
+        guard self.responseStatus != .declined else { return false }
         return !self.meetingLinks.isEmpty
     }
 

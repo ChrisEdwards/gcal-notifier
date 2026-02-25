@@ -264,6 +264,29 @@ struct ConflictDetectorFindConflictsTests {
         #expect(conflicts.isEmpty)
     }
 
+    @Test("Declined events are excluded from conflict detection")
+    func findConflicts_excludesDeclinedEvents() throws {
+        let now = Date()
+        let meetingURL = try #require(TestURLs.googleMeet)
+        let declinedEvent = makeEvent(
+            id: "declined",
+            startTime: now,
+            endTime: now.addingTimeInterval(3600),
+            meetingLinks: [MeetingLink(url: meetingURL)],
+            responseStatus: .declined
+        )
+        let acceptedEvent = makeEvent(
+            id: "accepted",
+            startTime: now,
+            endTime: now.addingTimeInterval(3600),
+            meetingLinks: [MeetingLink(url: meetingURL)]
+        )
+
+        let conflicts = self.detector.findConflicts(in: [declinedEvent, acceptedEvent])
+
+        #expect(conflicts.isEmpty)
+    }
+
     @Test("Three overlapping events returns three pairs")
     func findConflicts_threeOverlapping_returnsThreePairs() throws {
         let now = Date()

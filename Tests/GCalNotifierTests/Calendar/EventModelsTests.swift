@@ -227,6 +227,14 @@ struct ShouldAlertTests {
         #expect(event.shouldAlert == true)
     }
 
+    @Test("shouldAlert returns false for declined event with meeting link")
+    func shouldAlertDeclinedEvent() throws {
+        let meetingURL = try #require(TestURLs.googleMeetAbc)
+        let meetingLink = MeetingLink(url: meetingURL)
+        let event = makeEvent(meetingLinks: [meetingLink], responseStatus: .declined)
+        #expect(event.shouldAlert == false)
+    }
+
     @Test("shouldAlert returns false without meeting link")
     func shouldAlertWithoutMeetingLink() {
         let event = makeEvent(meetingLinks: [])
