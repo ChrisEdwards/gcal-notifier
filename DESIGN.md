@@ -94,7 +94,7 @@ gcal-notifier/
 │   │   │   └── SoundPlayer.swift          # AVFoundation audio playback
 │   │   ├── Settings/
 │   │   │   ├── PreferencesView.swift      # SwiftUI settings window
-│   │   │   └── OAuthSetupView.swift       # Credential configuration
+│   │   │   └── AccountTab.swift            # Account & OAuth settings
 │   │   └── Resources/
 │   │       └── Sounds/                    # Built-in alert sounds
 │   │
