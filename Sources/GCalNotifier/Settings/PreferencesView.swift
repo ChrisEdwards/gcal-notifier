@@ -1,9 +1,46 @@
 import GCalNotifierCore
 import SwiftUI
 
-/// Main preferences window with tabbed interface for all application settings.
+/// Sidebar sections for the settings window.
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case general
+    case sounds
+    case calendars
+    case filtering
+    case shortcuts
+    case account
+
+    var id: String {
+        rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .general: "General"
+        case .sounds: "Sounds"
+        case .calendars: "Calendars"
+        case .filtering: "Filtering"
+        case .shortcuts: "Shortcuts"
+        case .account: "Account"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: "gear"
+        case .sounds: "speaker.wave.2"
+        case .calendars: "calendar"
+        case .filtering: "line.3.horizontal.decrease.circle"
+        case .shortcuts: "keyboard"
+        case .account: "person.circle"
+        }
+    }
+}
+
+/// Main preferences window with sidebar navigation for all application settings.
 struct PreferencesView: View {
     @State private var settings: SettingsStore
+    @State private var selectedSection: SettingsSection? = .general
     private let oauthProvider: GoogleOAuthProvider
     private let fetchCalendars: (() async throws -> [CalendarInfo])?
     private let onForceSync: (() async -> ForceSyncResult)?
@@ -21,26 +58,36 @@ struct PreferencesView: View {
     }
 
     var body: some View {
-        TabView {
-            GeneralTab(settings: self.settings)
-                .tabItem { Label("General", systemImage: "gear") }
-
-            SoundsTab(settings: self.settings)
-                .tabItem { Label("Sounds", systemImage: "speaker.wave.2") }
-
-            CalendarsTab(settings: self.settings, fetchCalendars: self.fetchCalendars)
-                .tabItem { Label("Calendars", systemImage: "calendar") }
-
-            FilteringTab(settings: self.settings)
-                .tabItem { Label("Filtering", systemImage: "line.3.horizontal.decrease.circle") }
-
-            ShortcutsTab(settings: self.settings)
-                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
-
-            AccountTab(oauthProvider: self.oauthProvider, onForceSync: self.onForceSync)
-                .tabItem { Label("Account", systemImage: "person.circle") }
+        NavigationSplitView {
+            List(SettingsSection.allCases, selection: self.$selectedSection) { section in
+                Label(section.label, systemImage: section.icon)
+            }
+            .navigationSplitViewColumnWidth(min: 160, ideal: 170, max: 200)
+        } detail: {
+            self.detailView
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 650, height: 550)
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch self.selectedSection {
+        case .general:
+            GeneralTab(settings: self.settings)
+        case .sounds:
+            SoundsTab(settings: self.settings)
+        case .calendars:
+            CalendarsTab(settings: self.settings, fetchCalendars: self.fetchCalendars)
+        case .filtering:
+            FilteringTab(settings: self.settings)
+        case .shortcuts:
+            ShortcutsTab(settings: self.settings)
+        case .account:
+            AccountTab(oauthProvider: self.oauthProvider, onForceSync: self.onForceSync)
+        case nil:
+            Text("Select a section")
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
