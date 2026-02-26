@@ -53,7 +53,9 @@ public final class NotificationPermissionHandler {
 
     /// Whether notifications are authorized.
     public var isAuthorized: Bool {
-        self.authorizationStatus == .authorized || self.authorizationStatus == .provisional
+        self.authorizationStatus == .authorized
+            || self.authorizationStatus == .provisional
+            || self.authorizationStatus == .ephemeral
     }
 
     /// Whether permission has not been determined yet.

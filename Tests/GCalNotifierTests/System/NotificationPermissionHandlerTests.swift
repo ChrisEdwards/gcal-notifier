@@ -132,6 +132,17 @@ struct NotificationPermissionHandlerTests {
         #expect(handler.isAuthorized)
     }
 
+    @Test("isAuthorized is true when status is ephemeral")
+    func isAuthorizedIsTrueWhenEphemeral() async {
+        let mockCenter = MockPermissionNotificationCenter()
+        mockCenter.authorizationStatus = .ephemeral
+
+        let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
+        await handler.checkPermission()
+
+        #expect(handler.isAuthorized)
+    }
+
     // MARK: - Delegate Notifications
 
     @Test("delegate is notified when status changes")
