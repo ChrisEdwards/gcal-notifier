@@ -218,12 +218,17 @@ public actor AlertEngine {
         guard !self.isInitialized else { return }
         self.isInitialized = true
 
-        let persistedAlerts = try await alertsStore.load()
-        let now = self.dateProvider()
+        do {
+            let persistedAlerts = try await alertsStore.load()
+            let now = self.dateProvider()
 
-        for alert in persistedAlerts where alert.scheduledFireTime > now {
-            self.alerts[alert.id] = alert
-            await self.scheduleTimer(for: alert)
+            for alert in persistedAlerts where alert.scheduledFireTime > now {
+                self.alerts[alert.id] = alert
+                await self.scheduleTimer(for: alert)
+            }
+        } catch {
+            self.isInitialized = false
+            throw error
         }
     }
 

@@ -338,6 +338,52 @@ struct AlertEngineReconcileOnRelaunchTests {
         let scheduled = await scheduler.scheduledAlerts
         #expect(scheduled.count == 1)
     }
+
+    @Test("Reconcile on relaunch retries after load failure")
+    func reconcileOnRelaunchRetriesAfterLoadFailure() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let invalidData = Data("not-json".utf8)
+        try invalidData.write(to: fileURL)
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let engine = AlertEngine(
+            alertsStore: store, scheduler: scheduler, delivery: delivery,
+            dateProvider: { baseTime }
+        )
+
+        var didThrow = false
+        do {
+            try await engine.reconcileOnRelaunch()
+        } catch {
+            didThrow = true
+        }
+        #expect(didThrow)
+
+        let futureFireTime = baseTime.addingTimeInterval(1800)
+        let alert = ScheduledAlert(
+            id: "recovery-alert",
+            eventId: "cal-1::event-1",
+            stage: .stage1,
+            scheduledFireTime: futureFireTime,
+            snoozeCount: 0,
+            originalFireTime: nil,
+            eventTitle: "Recovered Meeting",
+            eventStartTime: futureFireTime.addingTimeInterval(600)
+        )
+
+        try await store.save([alert])
+        try await engine.reconcileOnRelaunch()
+
+        let scheduled = await scheduler.scheduledAlerts
+        #expect(scheduled.count == 1)
+        #expect(scheduled.first?.alertId == "recovery-alert")
+    }
 }
 
 // MARK: - Alert Delivery Tests
