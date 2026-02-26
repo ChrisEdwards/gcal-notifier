@@ -1,25 +1,44 @@
 import GCalNotifierCore
 import SwiftUI
 
-/// Settings view for configuring OAuth credentials and managing sign-in.
-///
-/// This view provides:
-/// - Step-by-step setup instructions with links
-/// - Client ID/Secret input fields
-/// - Sign-in button and status display
-/// - Sign-out functionality
-/// - Error display
-struct OAuthSetupView: View {
+/// Result returned from force sync operation.
+struct ForceSyncResult: Sendable {
+    let eventCount: Int
+    let error: String?
+
+    static func success(eventCount: Int) -> ForceSyncResult {
+        ForceSyncResult(eventCount: eventCount, error: nil)
+    }
+
+    static func failure(_ error: String) -> ForceSyncResult {
+        ForceSyncResult(eventCount: 0, error: error)
+    }
+}
+
+/// Account settings combining OAuth setup and sync status in a single Form.
+struct AccountTab: View {
+    // OAuth state
     @State private var clientId = ""
     @State private var clientSecret = ""
     @State private var authState: AuthState = .unconfigured
     @State private var isSigningIn = false
-    @State private var errorMessage: String?
+    @State private var oauthError: String?
+
+    // Sync state
+    @State private var lastSyncTime: Date?
+    @State private var lastSyncError: String?
+    @State private var isLoadingSync = false
+    @State private var syncStatusMessage: String?
 
     private let oauthProvider: GoogleOAuthProvider
+    private let onForceSync: (() async -> ForceSyncResult)?
 
-    init(oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider()) {
+    init(
+        oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider(),
+        onForceSync: (() async -> ForceSyncResult)? = nil
+    ) {
         self.oauthProvider = oauthProvider
+        self.onForceSync = onForceSync
     }
 
     var body: some View {
@@ -35,20 +54,22 @@ struct OAuthSetupView: View {
             }
 
             Section("Connection Status") {
-                self.signInStatus
+                self.connectionStatus
             }
 
-            if let error = errorMessage {
+            if let error = oauthError {
                 Section {
-                    self.errorView(error)
+                    self.oauthErrorView(error)
                 }
+            }
+
+            Section("Sync Status") {
+                self.syncStatusSection
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 500)
-        .task {
-            await self.loadInitialState()
-        }
+        .task { await self.loadInitialState() }
+        .task { await self.pollAuthState() }
     }
 
     // MARK: - Setup Instructions
@@ -63,23 +84,19 @@ struct OAuthSetupView: View {
                 text: "Go to Google Cloud Console",
                 url: URL(string: "https://console.cloud.google.com/apis/credentials")
             )
-
             self.instructionStep(
                 number: 2,
                 text: "Create a new project (or select an existing one)"
             )
-
             self.instructionStep(
                 number: 3,
                 text: "Enable the Google Calendar API",
                 url: URL(string: "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com")
             )
-
             self.instructionStep(
                 number: 4,
                 text: "Create OAuth 2.0 Desktop credentials"
             )
-
             self.instructionStep(
                 number: 5,
                 text: "Copy the Client ID and Client Secret below"
@@ -116,67 +133,48 @@ struct OAuthSetupView: View {
             .disabled(self.isSigningIn)
     }
 
-    // MARK: - Sign In Status
+    // MARK: - Connection Status
 
-    private var signInStatus: some View {
+    private var connectionStatus: some View {
         HStack {
-            self.statusIndicator
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(self.statusColor)
+                    .frame(width: 10, height: 10)
+                Text(self.statusText)
+                    .foregroundStyle(self.statusTextColor)
+            }
             Spacer()
             self.actionButton
         }
     }
 
-    private var statusIndicator: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(self.statusColor)
-                .frame(width: 10, height: 10)
-
-            Text(self.statusText)
-                .foregroundStyle(self.statusTextColor)
-        }
-    }
-
     private var statusColor: Color {
         switch self.authState {
-        case .authenticated:
-            .green
-        case .authenticating:
-            .orange
-        case .expired:
-            .yellow
-        case .invalid:
-            .red
-        case .unconfigured, .configured:
-            .gray
+        case .authenticated: .green
+        case .authenticating: .orange
+        case .expired: .yellow
+        case .invalid: .red
+        case .unconfigured, .configured: .gray
         }
     }
 
     private var statusText: String {
         switch self.authState {
-        case .unconfigured:
-            "Not configured"
-        case .configured:
-            "Ready to sign in"
-        case .authenticating:
-            "Signing in..."
-        case .authenticated:
-            "Connected"
-        case .expired:
-            "Session expired (will refresh)"
-        case .invalid:
-            "Re-authentication required"
+        case .unconfigured: "Not configured"
+        case .configured: "Ready to sign in"
+        case .authenticating: "Signing in..."
+        case .authenticated: "Connected"
+        case .expired: "Session expired (will refresh)"
+        case .invalid: "Re-authentication required"
         }
     }
 
     private var statusTextColor: Color {
         switch self.authState {
-        case .authenticated:
-            .primary
-        case .invalid:
-            .red
-        default:
-            .secondary
+        case .authenticated: .primary
+        case .invalid: .red
+        default: .secondary
         }
     }
 
@@ -202,159 +200,24 @@ struct OAuthSetupView: View {
         !self.clientId.isEmpty && !self.clientSecret.isEmpty
     }
 
-    // MARK: - Error View
+    // MARK: - OAuth Error
 
-    private func errorView(_ message: String) -> some View {
+    private func oauthErrorView(_ message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
-
             Text(message)
                 .foregroundStyle(.red)
-
             Spacer()
-
             Button("Dismiss") {
-                self.errorMessage = nil
+                self.oauthError = nil
             }
             .buttonStyle(.borderless)
             .pointerCursor()
         }
     }
 
-    // MARK: - Actions
-
-    private func loadInitialState() async {
-        do {
-            try await self.oauthProvider.loadStoredCredentials()
-            self.authState = await self.oauthProvider.state
-        } catch {
-            self.errorMessage = "Failed to load credentials: \(error.localizedDescription)"
-        }
-    }
-
-    private func signIn() async {
-        self.isSigningIn = true
-        self.errorMessage = nil
-
-        do {
-            if !self.authState.hasCredentials {
-                try await self.oauthProvider.configure(clientId: self.clientId, clientSecret: self.clientSecret)
-            }
-            self.authState = await self.oauthProvider.state
-
-            try await self.oauthProvider.authenticate()
-            self.authState = await self.oauthProvider.state
-
-            self.clientId = ""
-            self.clientSecret = ""
-        } catch let error as OAuthError {
-            handleOAuthError(error)
-        } catch {
-            self.errorMessage = error.localizedDescription
-        }
-
-        self.authState = await self.oauthProvider.state
-        self.isSigningIn = false
-    }
-
-    private func signOut() async {
-        self.isSigningIn = true
-        self.errorMessage = nil
-
-        do {
-            try await self.oauthProvider.signOut()
-            self.authState = await self.oauthProvider.state
-        } catch {
-            self.errorMessage = "Sign out failed: \(error.localizedDescription)"
-        }
-
-        self.isSigningIn = false
-    }
-
-    private func handleOAuthError(_ error: OAuthError) {
-        switch error {
-        case .userCancelled:
-            self.errorMessage = "Sign-in was cancelled."
-        case .invalidCredentials:
-            self.errorMessage = "Invalid credentials. Please check your Client ID and Secret."
-        case .notConfigured:
-            self.errorMessage = "Please enter your OAuth credentials first."
-        case let .authenticationFailed(message):
-            self.errorMessage = "Authentication failed: \(message)"
-        case let .tokenRefreshFailed(message):
-            self.errorMessage = "Token refresh failed: \(message)"
-        case let .networkError(message):
-            self.errorMessage = "Network error: \(message)"
-        case .notAuthenticated:
-            self.errorMessage = "Please sign in first."
-        case let .keychainError(keychainError):
-            self.errorMessage = "Keychain error: \(keychainError)"
-        case let .serverError(code, message):
-            self.errorMessage = "Server error (\(code)): \(message). Please try again."
-        }
-    }
-}
-
-/// Result returned from force sync operation.
-struct ForceSyncResult: Sendable {
-    let eventCount: Int
-    let error: String?
-
-    static func success(eventCount: Int) -> ForceSyncResult {
-        ForceSyncResult(eventCount: eventCount, error: nil)
-    }
-
-    static func failure(_ error: String) -> ForceSyncResult {
-        ForceSyncResult(eventCount: 0, error: error)
-    }
-}
-
-struct AccountTab: View {
-    @State private var authState: AuthState = .unconfigured
-    @State private var lastSyncTime: Date?
-    @State private var lastSyncError: String?
-    @State private var isLoadingSync = false
-    @State private var syncStatusMessage: String?
-
-    private let oauthProvider: GoogleOAuthProvider
-    private let onForceSync: (() async -> ForceSyncResult)?
-
-    init(
-        oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider(),
-        onForceSync: (() async -> ForceSyncResult)? = nil
-    ) {
-        self.oauthProvider = oauthProvider
-        self.onForceSync = onForceSync
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                OAuthSetupView(oauthProvider: self.oauthProvider)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Sync Status")
-                        .font(.headline)
-
-                    self.syncStatusSection
-                }
-                .padding(.horizontal)
-            }
-            .padding()
-        }
-        .task {
-            await self.loadSyncStatus()
-        }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                self.authState = await self.oauthProvider.state
-            }
-        }
-    }
+    // MARK: - Sync Status
 
     @ViewBuilder
     private var syncStatusSection: some View {
@@ -395,15 +258,18 @@ struct AccountTab: View {
         .disabled(self.isLoadingSync || !self.authState.canMakeApiCalls)
         .help("Clears all sync tokens and performs a fresh calendar sync")
     }
+}
 
-    private func formatDate(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
-    }
+// MARK: - AccountTab Actions
 
-    private func loadSyncStatus() async {
-        self.authState = await self.oauthProvider.state
+extension AccountTab {
+    func loadInitialState() async {
+        do {
+            try await self.oauthProvider.loadStoredCredentials()
+            self.authState = await self.oauthProvider.state
+        } catch {
+            self.oauthError = "Failed to load credentials: \(error.localizedDescription)"
+        }
 
         do {
             let appState = try AppStateStore()
@@ -413,7 +279,85 @@ struct AccountTab: View {
         }
     }
 
-    private func forceFullSync() async {
+    func pollAuthState() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(1))
+            self.authState = await self.oauthProvider.state
+        }
+    }
+
+    func signIn() async {
+        self.isSigningIn = true
+        self.oauthError = nil
+
+        do {
+            if !self.authState.hasCredentials {
+                try await self.oauthProvider.configure(
+                    clientId: self.clientId,
+                    clientSecret: self.clientSecret
+                )
+            }
+            self.authState = await self.oauthProvider.state
+
+            try await self.oauthProvider.authenticate()
+            self.authState = await self.oauthProvider.state
+
+            self.clientId = ""
+            self.clientSecret = ""
+        } catch let error as OAuthError {
+            self.handleOAuthError(error)
+        } catch {
+            self.oauthError = error.localizedDescription
+        }
+
+        self.authState = await self.oauthProvider.state
+        self.isSigningIn = false
+    }
+
+    func signOut() async {
+        self.isSigningIn = true
+        self.oauthError = nil
+
+        do {
+            try await self.oauthProvider.signOut()
+            self.authState = await self.oauthProvider.state
+        } catch {
+            self.oauthError = "Sign out failed: \(error.localizedDescription)"
+        }
+
+        self.isSigningIn = false
+    }
+
+    func handleOAuthError(_ error: OAuthError) {
+        switch error {
+        case .userCancelled:
+            self.oauthError = "Sign-in was cancelled."
+        case .invalidCredentials:
+            self.oauthError = "Invalid credentials. Please check your Client ID and Secret."
+        case .notConfigured:
+            self.oauthError = "Please enter your OAuth credentials first."
+        case let .authenticationFailed(message):
+            self.oauthError = "Authentication failed: \(message)"
+        case let .tokenRefreshFailed(message):
+            self.oauthError = "Token refresh failed: \(message)"
+        case let .networkError(message):
+            self.oauthError = "Network error: \(message)"
+        case .notAuthenticated:
+            self.oauthError = "Please sign in first."
+        case let .keychainError(keychainError):
+            self.oauthError = "Keychain error: \(keychainError)"
+        case let .serverError(code, message):
+            self.oauthError = "Server error (\(code)): \(message). Please try again."
+        }
+    }
+
+    func formatDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    func forceFullSync() async {
         guard let onForceSync else {
             self.lastSyncError = "Sync not available"
             return
