@@ -302,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let window = NSWindow(contentViewController: hostingController)
         window.title = "GCalNotifier Settings"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 500, height: 400))
+        window.setContentSize(NSSize(width: 650, height: 550))
         window.center()
         window.makeKeyAndOrderFront(nil)
 
