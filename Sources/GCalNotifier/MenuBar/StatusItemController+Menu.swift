@@ -129,10 +129,14 @@ public enum MenuBuilder {
             return []
         }
 
-        return events
+        let sorted = events
             .filter { !$0.isAllDay }
             .filter { $0.startTime < endOfDay && $0.endTime > startOfDay }
             .sorted { $0.startTime < $1.startTime }
+
+        // Deduplicate by event ID — the same event can appear across multiple calendars
+        var seen: Set<String> = []
+        return sorted.filter { seen.insert($0.id).inserted }
     }
 
     private static func findNextMeeting(from events: [CalendarEvent], now: Date) -> CalendarEvent? {

@@ -58,8 +58,9 @@ public final class MenuController: NSObject {
 
         do {
             let todaysEvents = try await eventCache.events(from: startOfDay, to: endOfDay)
-            self.events = todaysEvents
-            self.alertableEvents = self.filteredAlertableEvents(from: todaysEvents)
+            let calendarFiltered = self.filterByEnabledCalendars(todaysEvents)
+            self.events = calendarFiltered
+            self.alertableEvents = self.filteredAlertableEvents(from: calendarFiltered)
             let assumeFiltered = self.eventFilter != nil
             self.conflictingEventIds = Self.detectConflicts(
                 in: self.alertableEvents,
@@ -73,8 +74,9 @@ public final class MenuController: NSObject {
 
     /// Updates the events to display.
     public func updateEvents(_ events: [CalendarEvent]) {
-        self.events = events
-        self.alertableEvents = self.filteredAlertableEvents(from: events)
+        let calendarFiltered = self.filterByEnabledCalendars(events)
+        self.events = calendarFiltered
+        self.alertableEvents = self.filteredAlertableEvents(from: calendarFiltered)
     }
 
     /// Updates the set of conflicting event IDs.
@@ -129,6 +131,11 @@ public final class MenuController: NSObject {
             ids.insert(pair.second.qualifiedId)
         }
         return ids
+    }
+
+    private func filterByEnabledCalendars(_ events: [CalendarEvent]) -> [CalendarEvent] {
+        guard let eventFilter else { return events }
+        return events.filter { eventFilter.isCalendarEnabled($0.calendarId) }
     }
 
     private func filteredAlertableEvents(from events: [CalendarEvent]) -> [CalendarEvent] {

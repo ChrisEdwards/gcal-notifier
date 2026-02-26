@@ -39,9 +39,8 @@ public struct EventFilter: Sendable {
         return true
     }
 
-    // MARK: - Private Helpers
-
-    private func isCalendarEnabled(_ calendarId: String) -> Bool {
+    /// Returns true if the given calendar ID should be shown (respects the enabledCalendars setting).
+    public func isCalendarEnabled(_ calendarId: String) -> Bool {
         let enabled = self.settings.enabledCalendars
         // Empty list means all calendars are enabled
         guard !enabled.isEmpty else { return true }
