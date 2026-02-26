@@ -293,6 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let preferencesView = PreferencesView(
             settings: self.settingsStore,
             oauthProvider: self.oauthProvider,
+            fetchCalendars: { [weak self] in try await self?.calendarClient?.fetchCalendarList() ?? [] },
             onForceSync: { [weak self] in
                 await self?.performForceFullSync() ?? .failure("App not available")
             }

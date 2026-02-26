@@ -14,7 +14,7 @@ public struct EventsResponse: Sendable, Equatable {
 }
 
 /// Basic calendar information.
-public struct CalendarInfo: Sendable, Equatable {
+public struct CalendarInfo: Codable, Identifiable, Sendable, Equatable {
     public let id: String
     public let summary: String
     public let isPrimary: Bool
@@ -29,7 +29,7 @@ public struct CalendarInfo: Sendable, Equatable {
 }
 
 /// Access role for a calendar.
-public enum CalendarAccessRole: String, Sendable, Equatable {
+public enum CalendarAccessRole: String, Codable, Sendable, Equatable {
     case freeBusyReader
     case reader
     case writer

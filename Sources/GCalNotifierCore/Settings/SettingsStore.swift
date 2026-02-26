@@ -18,6 +18,7 @@ public final class SettingsStore: @unchecked Sendable {
         static let launchAtLogin = "launchAtLogin"
         static let suppressDuringScreenShare = "suppressDuringScreenShare"
         static let shortcutsEnabled = "shortcutsEnabled"
+        static let cachedCalendarList = "cachedCalendarList"
     }
 
     // MARK: - Properties
@@ -157,6 +158,22 @@ public final class SettingsStore: @unchecked Sendable {
         }
     }
 
+    // MARK: - Cached Calendar List
+
+    /// Cached list of Google calendars for offline display in the Calendars tab.
+    /// Populated when the user opens Preferences → Calendars; UI-only, not used by sync logic.
+    public var cachedCalendarList: [CalendarInfo] {
+        get {
+            access(keyPath: \.cachedCalendarList)
+            return self.loadCodableArray(forKey: Keys.cachedCalendarList)
+        }
+        set {
+            withMutation(keyPath: \.cachedCalendarList) {
+                self.saveCodableArray(newValue, forKey: Keys.cachedCalendarList)
+            }
+        }
+    }
+
     // MARK: - Keyboard Shortcuts
 
     /// Whether global keyboard shortcuts are enabled.
@@ -201,6 +218,20 @@ public final class SettingsStore: @unchecked Sendable {
         else {
             return
         }
+        self.defaults.set(jsonString, forKey: key)
+    }
+
+    private func loadCodableArray<T: Codable>(forKey key: String) -> [T] {
+        guard let jsonString = self.defaults.string(forKey: key),
+              let data = jsonString.data(using: .utf8)
+        else { return [] }
+        return (try? JSONDecoder().decode([T].self, from: data)) ?? []
+    }
+
+    private func saveCodableArray(_ array: [some Codable], forKey key: String) {
+        guard let data = try? JSONEncoder().encode(array),
+              let jsonString = String(data: data, encoding: .utf8)
+        else { return }
         self.defaults.set(jsonString, forKey: key)
     }
 }

@@ -5,15 +5,18 @@ import SwiftUI
 struct PreferencesView: View {
     @State private var settings: SettingsStore
     private let oauthProvider: GoogleOAuthProvider
+    private let fetchCalendars: (() async throws -> [CalendarInfo])?
     private let onForceSync: (() async -> ForceSyncResult)?
 
     init(
         settings: SettingsStore = SettingsStore(),
         oauthProvider: GoogleOAuthProvider = GoogleOAuthProvider(),
+        fetchCalendars: (() async throws -> [CalendarInfo])? = nil,
         onForceSync: (() async -> ForceSyncResult)? = nil
     ) {
         self._settings = State(initialValue: settings)
         self.oauthProvider = oauthProvider
+        self.fetchCalendars = fetchCalendars
         self.onForceSync = onForceSync
     }
 
@@ -25,7 +28,7 @@ struct PreferencesView: View {
             SoundsTab(settings: self.settings)
                 .tabItem { Label("Sounds", systemImage: "speaker.wave.2") }
 
-            CalendarsTab(settings: self.settings)
+            CalendarsTab(settings: self.settings, fetchCalendars: self.fetchCalendars)
                 .tabItem { Label("Calendars", systemImage: "calendar") }
 
             FilteringTab(settings: self.settings)
@@ -313,80 +316,6 @@ private struct SoundCard: View {
         case .submarine: "water.waves"
         case .tink: "wand.and.stars"
         }
-    }
-}
-
-// MARK: - Calendars Tab
-
-/// Calendar selection for which calendars to monitor.
-struct CalendarsTab: View {
-    @Bindable var settings: SettingsStore
-    @State private var newCalendarId = ""
-
-    var body: some View {
-        Form {
-            Section {
-                Text(
-                    "Select which calendars should trigger meeting alerts. Leave empty to monitor all calendars."
-                )
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            }
-
-            Section("Enabled Calendars") {
-                if self.settings.enabledCalendars.isEmpty {
-                    Text("All calendars enabled")
-                        .foregroundStyle(.secondary)
-                        .italic()
-                } else {
-                    ForEach(self.settings.enabledCalendars, id: \.self) { calendarId in
-                        HStack {
-                            Text(calendarId)
-                                .lineLimit(1)
-                            Spacer()
-                            Button {
-                                self.removeCalendar(calendarId)
-                            } label: {
-                                Image(systemName: "minus.circle")
-                                    .foregroundStyle(.red)
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    }
-                }
-            }
-
-            Section("Add Calendar") {
-                HStack {
-                    TextField("Calendar ID", text: self.$newCalendarId)
-                        .textFieldStyle(.roundedBorder)
-
-                    Button("Add") {
-                        self.addCalendar()
-                    }
-                    .disabled(self.newCalendarId.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .pointerCursor()
-                }
-
-                Text("Enter the calendar ID (email address) to monitor")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private func addCalendar() {
-        let calendarId = self.newCalendarId.trimmingCharacters(in: .whitespaces)
-        guard !calendarId.isEmpty, !self.settings.enabledCalendars.contains(calendarId) else {
-            return
-        }
-        self.settings.enabledCalendars.append(calendarId)
-        self.newCalendarId = ""
-    }
-
-    private func removeCalendar(_ calendarId: String) {
-        self.settings.enabledCalendars.removeAll { $0 == calendarId }
     }
 }
 
