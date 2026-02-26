@@ -97,8 +97,10 @@ all: ## Run format, lint, and tests
 
 ## App targets
 
-start: ## Build and run the app
-	@./Scripts/compile_and_run.sh
+start: ## Build, package, and run the app
+	@./Scripts/kill_app.sh 2>/dev/null || true
+	@$(MAKE) package
+	@open dist/GCalNotifier.app
 
 stop: ## Stop running app instances
 	@./Scripts/kill_app.sh

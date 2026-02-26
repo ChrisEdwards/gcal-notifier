@@ -58,15 +58,24 @@ struct PreferencesView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsSection.allCases, selection: self.$selectedSection) { section in
-                Label(section.label, systemImage: section.icon)
-            }
-            .navigationSplitViewColumnWidth(min: 160, ideal: 170, max: 200)
-        } detail: {
+        HStack(spacing: 0) {
+            self.sidebar
+            Divider()
             self.detailView
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: 650, height: 550)
+    }
+
+    private var sidebar: some View {
+        List(selection: self.$selectedSection) {
+            ForEach(SettingsSection.allCases) { section in
+                Label(section.label, systemImage: section.icon)
+                    .tag(section)
+            }
+        }
+        .listStyle(.sidebar)
+        .frame(width: 170)
     }
 
     @ViewBuilder
