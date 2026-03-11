@@ -319,12 +319,17 @@ extension AppDelegate {
             return
         }
         Task {
-            let scheduler = await NotificationScheduler()
+            // Use DispatchAlertScheduler for reliable timer-based alert firing.
+            // NotificationScheduler (UNUserNotificationCenter) is unreliable as a timing
+            // mechanism for LSUIElement menu bar apps because the willPresent delegate
+            // is not called when the app isn't the active/frontmost app.
+            let alertScheduler = DispatchAlertScheduler()
+            let notificationScheduler = await NotificationScheduler()
             let delivery = WindowAlertDelivery(
                 windowController: alertWindowController,
                 eventCache: eventCache,
                 settings: self.settingsStore,
-                scheduler: scheduler
+                scheduler: notificationScheduler
             )
 
             // Update status bar when an alert is delivered
@@ -338,7 +343,7 @@ extension AppDelegate {
 
             let engine = AlertEngine(
                 alertsStore: alertsStore,
-                scheduler: scheduler,
+                scheduler: alertScheduler,
                 delivery: delivery
             )
             await self.configureAlertEngineProviders(engine)

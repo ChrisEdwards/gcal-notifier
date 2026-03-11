@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import UserNotifications
 
 // MARK: - NotificationCenterProtocol
@@ -155,8 +156,9 @@ public actor NotificationScheduler: AlertScheduler {
         do {
             try await self.center.add(request)
         } catch {
-            // Log error but don't throw - handler is already registered
-            // The alert may still fire if there's a retry mechanism
+            Logger.alerts.error(
+                "Failed to schedule notification for alert \(alertId): \(error.localizedDescription)"
+            )
         }
     }
 
@@ -222,7 +224,9 @@ public actor NotificationScheduler: AlertScheduler {
         do {
             try await self.center.add(request)
         } catch {
-            // Banner delivery failed - log but continue
+            Logger.alerts.error(
+                "Failed to deliver banner notification \(identifier): \(error.localizedDescription)"
+            )
         }
     }
 
