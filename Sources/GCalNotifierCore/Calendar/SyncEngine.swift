@@ -375,6 +375,10 @@ public actor SyncEngine {
         self.logger.info(
             "Multi-sync complete: \(successfulCount) ok, \(failedCount) failed, \(cachedCount) cached events"
         )
+        if !failedCalendars.isEmpty {
+            let failedIds = failedCalendars.keys.sorted().joined(separator: ",")
+            self.logger.warning("Multi-sync failed calendars retained from cache: \(failedIds)")
+        }
 
         return MultiCalendarSyncResult(
             events: mergedEvents,

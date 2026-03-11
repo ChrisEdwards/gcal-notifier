@@ -1,5 +1,6 @@
 import Foundation
 import GCalNotifierCore
+import OSLog
 
 /// Alert delivery implementation that shows the alert window.
 @MainActor
@@ -47,7 +48,12 @@ public final class WindowAlertDelivery: AlertDelivery {
         // Load the event from cache to get full details
         Task {
             let event = await self.loadEvent(for: alert)
-            guard let event else { return }
+            guard let event else {
+                Logger.alerts.error(
+                    "Alert delivery dropped: event not found for \(alert.id) (stage=\(alert.stage.rawValue))"
+                )
+                return
+            }
 
             let isSnoozed = alert.snoozeCount > 0
             let snoozeContext = isSnoozed ? "Snoozed \(alert.snoozeCount) time(s)" : nil
@@ -61,6 +67,9 @@ public final class WindowAlertDelivery: AlertDelivery {
                 snoozed: isSnoozed,
                 snoozeContext: snoozeContext
             )
+            Logger.alerts.info(
+                "Alert window shown for \(alert.id) (stage=\(alert.stage.rawValue), snoozed=\(isSnoozed))"
+            )
 
             // Play sound
             let soundName = alert.stage == .stage1 ? self.settings.stage1Sound : self.settings.stage2Sound
@@ -73,7 +82,12 @@ public final class WindowAlertDelivery: AlertDelivery {
 
     @MainActor
     private func handleDowngradedAlert(_ alert: ScheduledAlert, reason: AlertDowngradeReason) async {
-        guard let event = await self.loadEvent(for: alert) else { return }
+        guard let event = await self.loadEvent(for: alert) else {
+            Logger.alerts.error(
+                "Downgraded alert dropped: event not found for \(alert.id) (reason=\(String(describing: reason)))"
+            )
+            return
+        }
 
         let title = self.bannerTitle(for: event)
         await self.scheduler.showBannerNotification(
@@ -81,6 +95,7 @@ public final class WindowAlertDelivery: AlertDelivery {
             body: event.title,
             identifier: "\(alert.id)-banner"
         )
+        Logger.alerts.info("Banner shown for \(alert.id) (reason=\(String(describing: reason)))")
         SoundPlayer.shared.playDowngradedAlertSound(for: reason)
         self.onAlertDelivered?()
         if let engine = self.alertEngine {
@@ -111,6 +126,9 @@ public final class WindowAlertDelivery: AlertDelivery {
             let events = try await eventCache.events(from: startOfDay, to: endOfDay)
             return events.first { $0.qualifiedId == alert.eventId }
         } catch {
+            Logger.alerts.error(
+                "Event cache load failed during alert delivery for \(alert.id): \(error.localizedDescription)"
+            )
             return nil
         }
     }
