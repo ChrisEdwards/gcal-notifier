@@ -461,16 +461,11 @@ extension AppDelegate: FirstLaunchHandlerDelegate {
     }
 
     nonisolated func firstLaunchHandlerDidCompleteInitialSetup(_: FirstLaunchHandler) async {
-        // Initial setup complete - app is now in "setup required" state
-        // The menu will show setup instructions until OAuth is configured
+        // Initial setup complete; setup guidance remains visible until OAuth is configured.
     }
 
     nonisolated func firstLaunchHandlerDidSignIn(_: FirstLaunchHandler) async {
-        // Post-sign-in tasks would go here
-        // - Fetch calendar list
-        // - Enable all calendars
-        // - Trigger initial sync
-        // These will be handled by the appropriate services when available
+        // Post-sign-in follow-up is handled by existing services.
     }
 }
 

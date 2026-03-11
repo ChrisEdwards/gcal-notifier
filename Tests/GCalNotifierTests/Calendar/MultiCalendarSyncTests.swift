@@ -181,7 +181,6 @@ private actor MultiCalendarTestSyncEngine {
         from outcomes: [(String, Result<SyncResult, CalendarError>)]
     ) async -> MultiCalendarSyncResult {
         var allEvents: [CalendarEvent] = []
-        var allFilteredEvents: [CalendarEvent] = []
         var successfulCalendars: [String: SyncResult] = [:]
         var failedCalendars: [String: CalendarError] = [:]
 
@@ -189,16 +188,23 @@ private actor MultiCalendarTestSyncEngine {
             switch result {
             case let .success(syncResult):
                 allEvents.append(contentsOf: syncResult.events)
-                allFilteredEvents.append(contentsOf: syncResult.filteredEvents)
                 successfulCalendars[calendarId] = syncResult
             case let .failure(error):
                 failedCalendars[calendarId] = error
             }
         }
 
+        let mergedEvents: [CalendarEvent]
+        do {
+            mergedEvents = try await self.eventCache.load()
+        } catch {
+            mergedEvents = allEvents
+        }
+        let mergedFilteredEvents = mergedEvents.filter { self.eventFilter.shouldAlert(for: $0) }
+
         return MultiCalendarSyncResult(
-            events: allEvents,
-            filteredEvents: allFilteredEvents,
+            events: mergedEvents,
+            filteredEvents: mergedFilteredEvents,
             successfulCalendars: successfulCalendars,
             failedCalendars: failedCalendars
         )
@@ -321,6 +327,31 @@ struct SyncEngineMultiCalendarTests {
         #expect(result.failedCalendars["cal-2"] != nil)
         #expect(result.isPartialSuccess)
         #expect(!result.isFullSuccess)
+    }
+
+    @Test("sync partial failure preserves cached events from failed calendars")
+    func syncPartialFailurePreservesCachedEvents() async throws {
+        let ctx = try MultiCalendarTestContext()
+
+        let event1 = makeEvent(id: "event-1", calendarId: "cal-1", title: "Meeting 1")
+        let event2 = makeEvent(id: "event-2", calendarId: "cal-2", title: "Meeting 2")
+
+        // First sync: both calendars succeed and populate cache.
+        await ctx.mockClient.queueResponse(for: "cal-1", EventsResponse(events: [event1], nextSyncToken: "t1"))
+        await ctx.mockClient.queueResponse(for: "cal-2", EventsResponse(events: [event2], nextSyncToken: "t2"))
+        _ = try await ctx.engine.syncAllCalendars(["cal-1", "cal-2"])
+
+        // Second sync: one calendar fails; its previously cached events should remain in result.
+        await ctx.mockClient.queueResponse(for: "cal-1", EventsResponse(events: [event1], nextSyncToken: "t3"))
+        await ctx.mockClient.setError(for: "cal-2", CalendarError.networkError("temporary failure"))
+
+        let result = try await ctx.engine.syncAllCalendars(["cal-1", "cal-2"])
+
+        let ids = Set(result.events.map(\.qualifiedId))
+        #expect(ids.contains(event1.qualifiedId))
+        #expect(ids.contains(event2.qualifiedId))
+        #expect(result.successfulCalendars.count == 1)
+        #expect(result.failedCalendars.count == 1)
     }
 
     @Test("sync with health tracker skips disabled calendars")

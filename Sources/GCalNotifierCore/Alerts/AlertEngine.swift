@@ -278,12 +278,16 @@ public actor AlertEngine {
         // Skip if this specific alert was already dismissed for this event time
         guard !self.isAcknowledged(alertId: alertId, eventStartTime: event.startTime) else { return }
 
-        if let existing = alerts[alertId],
-           existing.scheduledFireTime <= now,
-           existing.eventStartTime == event.startTime
-        {
-            // Avoid re-firing an alert that's already due or has fired for this same event time.
-            return
+        if let existing = self.alerts[alertId], existing.eventStartTime == event.startTime {
+            if existing.wasSnoozed {
+                // Preserve user snooze choice across sync/reconcile.
+                return
+            }
+
+            if existing.scheduledFireTime <= now {
+                // Avoid re-firing an alert that's already due or has fired for this same event time.
+                return
+            }
         }
 
         let stageFire = event.startTime.addingTimeInterval(-Double(minutesBefore * 60))

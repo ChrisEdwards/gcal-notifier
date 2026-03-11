@@ -291,4 +291,42 @@ struct AlertEngineSnoozeTests {
         #expect(snoozedAlert != nil, "Alert should still exist after snooze")
         #expect(snoozedAlert?.snoozeCount == 1)
     }
+
+    @Test("Snoozed alert is not reset to immediate fire during reconcile grace period")
+    func snoozedAlertIsNotResetDuringReconcileGracePeriod() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+
+        let baseTime = Date(timeIntervalSince1970: 1_700_000_000)
+        nonisolated(unsafe) var currentTime = baseTime
+        let eventStart = baseTime.addingTimeInterval(10 * 60)
+
+        let engine = AlertEngine(
+            alertsStore: store,
+            scheduler: scheduler,
+            delivery: delivery,
+            dateProvider: { currentTime }
+        )
+
+        let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+        let alertId = event.alertIdentifier(for: .stage1)
+        let settings = try makeAlertTestSettings(stage1Minutes: 10, stage2Minutes: 0)
+
+        await engine.scheduleAlerts(for: [event], settings: settings)
+        try await engine.snooze(alertId: alertId, duration: 5 * 60)
+
+        // Advance slightly after original stage fire time so reconcile would otherwise
+        // treat this as late and schedule an immediate alert.
+        currentTime = baseTime.addingTimeInterval(30)
+        await engine.reconcile(newEvents: [event], settings: settings)
+
+        let alerts = await engine.scheduledAlerts
+        let updated = alerts.first { $0.id == alertId }
+        #expect(updated?.scheduledFireTime == baseTime.addingTimeInterval(5 * 60))
+        #expect(updated?.snoozeCount == 1)
+    }
 }

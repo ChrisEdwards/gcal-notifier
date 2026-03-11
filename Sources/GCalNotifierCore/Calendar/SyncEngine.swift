@@ -351,7 +351,6 @@ public actor SyncEngine {
         from outcomes: [(String, Result<SyncResult, CalendarError>)]
     ) async -> MultiCalendarSyncResult {
         var allEvents: [CalendarEvent] = []
-        var allFilteredEvents: [CalendarEvent] = []
         var successfulCalendars: [String: SyncResult] = [:]
         var failedCalendars: [String: CalendarError] = [:]
 
@@ -359,22 +358,42 @@ public actor SyncEngine {
             switch result {
             case let .success(syncResult):
                 allEvents.append(contentsOf: syncResult.events)
-                allFilteredEvents.append(contentsOf: syncResult.filteredEvents)
                 successfulCalendars[calendarId] = syncResult
             case let .failure(error):
                 failedCalendars[calendarId] = error
             }
         }
 
+        // Use the merged cache as source of truth so events from temporarily failed
+        // calendars are preserved instead of being dropped from alert reconciliation.
+        let mergedEvents = await self.loadMergedEventsFromCache(fallback: allEvents)
+        let mergedFilteredEvents = mergedEvents.filter { self.eventFilter.shouldAlert(for: $0) }
+        let successfulCount = successfulCalendars.count
+        let failedCount = failedCalendars.count
+        let cachedCount = mergedEvents.count
+
         self.logger.info(
-            "Multi-sync complete: \(successfulCalendars.count) ok, \(failedCalendars.count) failed"
+            "Multi-sync complete: \(successfulCount) ok, \(failedCount) failed, \(cachedCount) cached events"
         )
 
         return MultiCalendarSyncResult(
-            events: allEvents,
-            filteredEvents: allFilteredEvents,
+            events: mergedEvents,
+            filteredEvents: mergedFilteredEvents,
             successfulCalendars: successfulCalendars,
             failedCalendars: failedCalendars
         )
+    }
+}
+
+private extension SyncEngine {
+    func loadMergedEventsFromCache(fallback: [CalendarEvent]) async -> [CalendarEvent] {
+        do {
+            return try await self.eventCache.load()
+        } catch {
+            self.logger.error(
+                "Failed to load merged events from cache after multi-sync: \(error.localizedDescription)"
+            )
+            return fallback
+        }
     }
 }
