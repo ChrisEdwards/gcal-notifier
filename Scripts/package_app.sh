@@ -30,9 +30,11 @@ echo "Building ($BUILD_TYPE)..."
 if [ "$BUILD_TYPE" = "release" ]; then
     swift build -c release
     EXECUTABLE="$PROJECT_ROOT/.build/release/$APP_NAME"
+    BUILD_PRODUCTS_DIR="$PROJECT_ROOT/.build/arm64-apple-macosx/release"
 else
     swift build
     EXECUTABLE="$PROJECT_ROOT/.build/debug/$APP_NAME"
+    BUILD_PRODUCTS_DIR="$PROJECT_ROOT/.build/arm64-apple-macosx/debug"
 fi
 
 if [ ! -f "$EXECUTABLE" ]; then
@@ -88,6 +90,13 @@ fi
 # Copy Resources if they exist
 if [ -d "Resources" ]; then
     cp -r Resources/* "$APP_BUNDLE/Contents/Resources/" 2>/dev/null || true
+fi
+
+# Copy SwiftPM resource bundles (including dependency bundles like KeyboardShortcuts)
+if [ -d "$BUILD_PRODUCTS_DIR" ]; then
+    while IFS= read -r bundle_path; do
+        cp -R "$bundle_path" "$APP_BUNDLE/Contents/Resources/"
+    done < <(find "$BUILD_PRODUCTS_DIR" -maxdepth 1 -type d -name "*.bundle" | sort)
 fi
 
 # Copy entitlements for reference (useful for signing)

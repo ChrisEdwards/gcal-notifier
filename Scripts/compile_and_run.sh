@@ -23,6 +23,7 @@ fi
 APP_NAME="GCalNotifier"
 APP_BUNDLE="$PROJECT_ROOT/.build/debug/$APP_NAME.app"
 EXECUTABLE="$PROJECT_ROOT/.build/debug/$APP_NAME"
+BUILD_PRODUCTS_DIR="$PROJECT_ROOT/.build/arm64-apple-macosx/debug"
 
 # Source version info
 if [ -f "$PROJECT_ROOT/version.env" ]; then
@@ -75,6 +76,13 @@ fi
 # Copy sound resources if they exist
 if [ -d "$PROJECT_ROOT/Sources/GCalNotifier/Resources/Sounds" ]; then
     cp -r "$PROJECT_ROOT/Sources/GCalNotifier/Resources/Sounds" "$APP_BUNDLE/Contents/Resources/" 2>/dev/null || true
+fi
+
+# Copy SwiftPM resource bundles (including dependency bundles like KeyboardShortcuts)
+if [ -d "$BUILD_PRODUCTS_DIR" ]; then
+    while IFS= read -r bundle_path; do
+        cp -R "$bundle_path" "$APP_BUNDLE/Contents/Resources/"
+    done < <(find "$BUILD_PRODUCTS_DIR" -maxdepth 1 -type d -name "*.bundle" | sort)
 fi
 
 # Sign for local development
