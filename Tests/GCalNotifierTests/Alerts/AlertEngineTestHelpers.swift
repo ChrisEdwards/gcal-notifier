@@ -75,6 +75,8 @@ actor MockDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
     private(set) var scheduledNotifications: [ScheduledAlert] = []
     private(set) var scheduledSnoozeDurations: [String: [TimeInterval]] = [:]
     private(set) var cancelledNotificationIds: [String] = []
+    private(set) var cancelledPendingNotificationIds: [String] = []
+    private(set) var removedDeliveredNotificationIds: [String] = []
     private(set) var cancelAllCallCount = 0
 
     func scheduleNotification(for alert: ScheduledAlert, snoozeDurations: [TimeInterval]) {
@@ -84,11 +86,17 @@ actor MockDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
 
     func cancelNotification(alertId: String) {
         self.cancelledNotificationIds.append(alertId)
+        self.cancelledPendingNotificationIds.append(alertId)
+        self.removedDeliveredNotificationIds.append(alertId)
+        self.scheduledNotifications.removeAll { $0.id == alertId }
     }
 
     func cancelAllNotifications() {
         self.cancelAllCallCount += 1
-        self.cancelledNotificationIds.append(contentsOf: self.scheduledNotifications.map(\.id))
+        let alertIds = self.scheduledNotifications.map(\.id)
+        self.cancelledNotificationIds.append(contentsOf: alertIds)
+        self.cancelledPendingNotificationIds.append(contentsOf: alertIds)
+        self.removedDeliveredNotificationIds.append(contentsOf: alertIds)
         self.scheduledNotifications.removeAll()
     }
 
@@ -96,6 +104,8 @@ actor MockDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
         self.scheduledNotifications = []
         self.scheduledSnoozeDurations = [:]
         self.cancelledNotificationIds = []
+        self.cancelledPendingNotificationIds = []
+        self.removedDeliveredNotificationIds = []
         self.cancelAllCallCount = 0
     }
 }
