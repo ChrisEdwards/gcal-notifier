@@ -10,16 +10,22 @@ public protocol AlertScheduler: Sendable {
 
 /// Protocol for durable OS notification delivery that can survive app process interruptions.
 public protocol DurableAlertNotificationScheduler: Sendable {
-    func scheduleNotification(for alert: ScheduledAlert) async
+    func scheduleNotification(for alert: ScheduledAlert, snoozeDurations: [TimeInterval]) async
     func cancelNotification(alertId: String) async
     func cancelAllNotifications() async
+}
+
+public extension DurableAlertNotificationScheduler {
+    func scheduleNotification(for alert: ScheduledAlert) async {
+        await self.scheduleNotification(for: alert, snoozeDurations: AlertSnoozePolicy.supportedDurations)
+    }
 }
 
 /// No-op durable scheduler for tests and contexts without notification support.
 public struct NoOpDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
     public init() {}
 
-    public func scheduleNotification(for _: ScheduledAlert) async {}
+    public func scheduleNotification(for _: ScheduledAlert, snoozeDurations _: [TimeInterval]) async {}
 
     public func cancelNotification(alertId _: String) async {}
 

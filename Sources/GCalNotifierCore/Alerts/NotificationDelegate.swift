@@ -9,7 +9,7 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 
     static func presentationOptions(forCategoryIdentifier identifier: String) -> UNNotificationPresentationOptions {
-        let shouldShowBanner = identifier == NotificationScheduler.stage1AlertCategory ||
+        let shouldShowBanner = Self.isStage1Category(identifier) ||
             identifier == NotificationScheduler.backToBackAlertCategory ||
             identifier == NotificationScheduler.stage2AlertCategory
         return shouldShowBanner ? [.banner, .list] : []
@@ -79,8 +79,8 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         categoryIdentifier: String,
         actionIdentifier: String
     ) async {
-        if categoryIdentifier == NotificationScheduler.stage1AlertCategory {
-            await self.fireCommandInternal(.showContext(alertId: alertId))
+        if Self.isStage1Category(categoryIdentifier) {
+            await self.fireCommandInternal(Self.stage1Command(alertId: alertId, actionIdentifier: actionIdentifier))
             return
         }
 
@@ -104,6 +104,25 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             .dismiss(alertId: alertId)
         default:
             .showContext(alertId: alertId)
+        }
+    }
+
+    private static func stage1Command(alertId: String, actionIdentifier: String) -> AlertCommand {
+        guard let duration = NotificationScheduler.snoozeDuration(forActionIdentifier: actionIdentifier) else {
+            return .showContext(alertId: alertId)
+        }
+        return .snooze(alertId: alertId, duration: duration)
+    }
+
+    private static func isStage1Category(_ identifier: String) -> Bool {
+        switch identifier {
+        case NotificationScheduler.stage1AlertCategory,
+             NotificationScheduler.stage1Snooze1Category,
+             NotificationScheduler.stage1Snooze3Category,
+             NotificationScheduler.stage1Snooze5Category:
+            true
+        default:
+            false
         }
     }
 

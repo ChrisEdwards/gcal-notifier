@@ -135,6 +135,24 @@ struct AlertContentViewTests {
     }
 
     @MainActor
+    @Test("AlertContentView stores valid snooze durations")
+    func storesValidSnoozeDurations() {
+        let view = AlertContentView(
+            event: makeTestEvent(),
+            stage: .stage1,
+            isSnoozed: false,
+            snoozeContext: nil,
+            onJoin: {},
+            onSnooze: { _ in },
+            onOpenCalendar: {},
+            onDismiss: {},
+            snoozeDurations: [60]
+        )
+
+        #expect(view.snoozeDurations == [60])
+    }
+
+    @MainActor
     @Test("AlertContentView body creates view hierarchy")
     func bodyCreatesViewHierarchy() {
         let event = makeTestEvent()

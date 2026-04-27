@@ -57,6 +57,7 @@ public final class WindowAlertDelivery: AlertDelivery {
         let event = await self.displayEvent(for: alert)
         let isSnoozed = alert.snoozeCount > 0
         let snoozeContext = isSnoozed ? "Snoozed \(alert.snoozeCount) time(s)" : nil
+        let snoozeDurations = await self.snoozeDurations(for: alert)
 
         if let engine = alertEngine {
             self.windowController.setAlertEngine(engine)
@@ -65,7 +66,8 @@ public final class WindowAlertDelivery: AlertDelivery {
             for: event,
             stage: alert.stage,
             snoozed: isSnoozed,
-            snoozeContext: snoozeContext
+            snoozeContext: snoozeContext,
+            snoozeDurations: snoozeDurations
         )
         Logger.alerts.info(
             "Alert window shown for \(alert.id) (stage=\(alert.stage.rawValue), snoozed=\(isSnoozed))"
@@ -115,6 +117,11 @@ public final class WindowAlertDelivery: AlertDelivery {
             "Using alert snapshot fallback for \(alert.id) (stage=\(alert.stage.rawValue))"
         )
         return alert.fallbackCalendarEvent
+    }
+
+    private func snoozeDurations(for alert: ScheduledAlert) async -> [TimeInterval] {
+        guard let engine = self.alertEngine else { return AlertSnoozePolicy.supportedDurations }
+        return await engine.validSnoozeDurations(alertId: alert.id)
     }
 
     @MainActor

@@ -321,9 +321,12 @@ struct NotificationSchedulerTests {
         _ = await NotificationScheduler(center: mockCenter, delegate: delegate)
 
         let categoryIds = mockCenter.registeredCategoryIdentifiers
-        #expect(categoryIds.count == 4)
+        #expect(categoryIds.count == 7)
         #expect(categoryIds.contains(NotificationScheduler.meetingAlertCategory))
         #expect(categoryIds.contains(NotificationScheduler.stage1AlertCategory))
+        #expect(categoryIds.contains(NotificationScheduler.stage1Snooze1Category))
+        #expect(categoryIds.contains(NotificationScheduler.stage1Snooze3Category))
+        #expect(categoryIds.contains(NotificationScheduler.stage1Snooze5Category))
         #expect(categoryIds.contains(NotificationScheduler.stage2AlertCategory))
         #expect(categoryIds.contains(NotificationScheduler.backToBackAlertCategory))
     }

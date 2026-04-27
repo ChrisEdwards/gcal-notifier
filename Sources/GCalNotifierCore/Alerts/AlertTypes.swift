@@ -37,6 +37,26 @@ public enum AlertCommandResult: Sendable, Equatable {
     case noOp(alertId: String)
 }
 
+// MARK: - Snooze Policy
+
+public enum AlertSnoozePolicy {
+    public static let supportedDurations: [TimeInterval] = [60, 180, 300]
+
+    public static func validDurations(
+        for stage: AlertStage,
+        now: Date,
+        eventStartTime: Date,
+        stage2FireTime: Date?
+    ) -> [TimeInterval] {
+        self.supportedDurations.filter { duration in
+            let fireTime = now.addingTimeInterval(duration)
+            guard fireTime < eventStartTime else { return false }
+            guard stage == .stage1, let stage2FireTime else { return true }
+            return fireTime < stage2FireTime
+        }
+    }
+}
+
 // MARK: - Alert Downgrade Reason
 
 /// Reason why an alert was downgraded from modal to notification banner.
@@ -100,6 +120,9 @@ public enum AlertError: Error, Equatable, Sendable {
     /// Cannot snooze - the snooze duration would exceed the meeting start time.
     case snoozePastMeetingStart
 
+    /// Cannot snooze Stage 1 into the Stage 2 urgent reminder window.
+    case snoozePastStage2
+
     /// The specified alert was not found.
     case alertNotFound(alertId: String)
 }
@@ -111,6 +134,8 @@ extension AlertError: LocalizedError {
             "The meeting has already started."
         case .snoozePastMeetingStart:
             "Cannot snooze past the meeting start time."
+        case .snoozePastStage2:
+            "Cannot snooze Stage 1 into the urgent reminder window."
         case let .alertNotFound(alertId):
             "Alert not found: \(alertId)"
         }

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import GCalNotifier
 @testable import GCalNotifierCore
@@ -41,6 +42,22 @@ private func makeTestMeetingLink(
 ) -> MeetingLink? {
     guard let url = URL(string: urlString) else { return nil }
     return MeetingLink(url: url, platform: .googleMeet)
+}
+
+@MainActor
+private final class RecordingAlertContentProvider: AlertContentProvider {
+    private(set) var capturedActions: AlertWindowActions?
+
+    func makeContentView(
+        event _: CalendarEvent,
+        stage _: AlertStage,
+        isSnoozed _: Bool,
+        snoozeContext _: String?,
+        actions: AlertWindowActions
+    ) -> some View {
+        self.capturedActions = actions
+        return EmptyView()
+    }
 }
 
 // MARK: - AlertWindowActions Tests
@@ -208,7 +225,8 @@ struct AlertContentProviderTests {
             onJoin: { joinCalled = true },
             onSnooze: { _ in },
             onOpenCalendar: {},
-            onDismiss: {}
+            onDismiss: {},
+            snoozeDurations: [60]
         )
 
         let view = provider.makeContentView(
@@ -293,6 +311,18 @@ struct ShowAlertTests {
         )
 
         #expect(controller.window?.contentView != nil)
+    }
+
+    @MainActor
+    @Test("showAlert forwards valid snooze durations to modal content")
+    func showAlertForwardsValidSnoozeDurations() {
+        let controller = AlertWindowController()
+        let event = makeTestEvent()
+        let provider = RecordingAlertContentProvider()
+
+        controller.showAlert(for: event, stage: .stage1, snoozeDurations: [60], contentProvider: provider)
+
+        #expect(provider.capturedActions?.snoozeDurations == [60])
     }
 }
 

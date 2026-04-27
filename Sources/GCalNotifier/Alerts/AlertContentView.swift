@@ -15,6 +15,7 @@ public struct AlertContentView: View {
     let onSnooze: (TimeInterval) -> Void
     let onOpenCalendar: () -> Void
     let onDismiss: () -> Void
+    let snoozeDurations: [TimeInterval]
 
     public init(
         event: CalendarEvent,
@@ -24,7 +25,8 @@ public struct AlertContentView: View {
         onJoin: @escaping () -> Void,
         onSnooze: @escaping (TimeInterval) -> Void,
         onOpenCalendar: @escaping () -> Void,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        snoozeDurations: [TimeInterval] = AlertSnoozePolicy.supportedDurations
     ) {
         self.event = event
         self.stage = stage
@@ -34,6 +36,7 @@ public struct AlertContentView: View {
         self.onSnooze = onSnooze
         self.onOpenCalendar = onOpenCalendar
         self.onDismiss = onDismiss
+        self.snoozeDurations = snoozeDurations
     }
 
     public var body: some View {
@@ -154,15 +157,26 @@ extension AlertContentView {
         }
     }
 
+    @ViewBuilder
     private var snoozeMenu: some View {
-        Menu {
-            Button("1 minute") { self.onSnooze(60) }
-            Button("3 minutes") { self.onSnooze(180) }
-            Button("5 minutes") { self.onSnooze(300) }
-        } label: {
-            Text("Snooze")
-                .frame(minWidth: 60)
+        if self.snoozeDurations.isEmpty {
+            Button("Snooze") {}
+                .disabled(true)
+        } else {
+            Menu {
+                ForEach(self.snoozeDurations, id: \.self) { duration in
+                    Button(self.snoozeLabel(for: duration)) { self.onSnooze(duration) }
+                }
+            } label: {
+                Text("Snooze")
+                    .frame(minWidth: 60)
+            }
         }
+    }
+
+    private func snoozeLabel(for duration: TimeInterval) -> String {
+        let minutes = Int(duration / 60)
+        return "\(minutes) minute\(minutes == 1 ? "" : "s")"
     }
 }
 
@@ -267,7 +281,8 @@ public struct AlertContentViewProvider: AlertContentProvider {
             onJoin: actions.onJoin,
             onSnooze: actions.onSnooze,
             onOpenCalendar: actions.onOpenCalendar,
-            onDismiss: actions.onDismiss
+            onDismiss: actions.onDismiss,
+            snoozeDurations: actions.snoozeDurations
         )
     }
 }

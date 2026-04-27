@@ -21,6 +21,23 @@ struct NotificationDelegateCommandTests {
         #expect(await recorder.commands == [.showContext(alertId: "alert-stage1")])
     }
 
+    @Test("Stage 1 snooze action emits snooze command")
+    func stage1SnoozeActionEmitsSnoozeCommand() async {
+        let recorder = AlertCommandRecorder()
+        let delegate = NotificationDelegate()
+        await delegate.setAlertCommandHandler { command in
+            await recorder.record(command)
+        }
+
+        await delegate.testHandleResponse(
+            alertId: "alert-stage1",
+            categoryIdentifier: NotificationScheduler.stage1Snooze3Category,
+            actionIdentifier: NotificationScheduler.stage1Snooze3ActionIdentifier
+        )
+
+        #expect(await recorder.commands == [.snooze(alertId: "alert-stage1", duration: 180)])
+    }
+
     @Test("Stage 2 Join action emits join command")
     func stage2JoinActionEmitsJoinCommand() async {
         let recorder = AlertCommandRecorder()

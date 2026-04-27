@@ -19,7 +19,7 @@ struct NotificationSchedulerDurableTests {
         #expect(request.identifier == alert.id)
         #expect(request.title == alert.notificationPayload.title)
         #expect(request.body.contains(alert.eventTitle))
-        #expect(request.categoryIdentifier == AlertNotificationPayload.stage1CategoryIdentifier)
+        #expect(request.categoryIdentifier == NotificationScheduler.stage1Snooze5Category)
         #expect(request.soundIsNil)
         #expect(!request.isTimeSensitive)
         #expect(request.userInfo["notificationUrgency"] == AlertNotificationUrgency.active.rawValue)
@@ -110,6 +110,23 @@ struct NotificationSchedulerDurableTests {
         #expect(requests[stage2.id]?.userInfo["notificationUrgency"] == AlertNotificationUrgency.timeSensitive.rawValue)
         #expect(requests[stage1.id]?.soundIsNil == true)
         #expect(requests[stage2.id]?.soundIsNil == false)
+    }
+
+    @Test("Stage 1 category matches valid snooze durations")
+    func stage1CategoryMatchesValidSnoozeDurations() async throws {
+        let mockCenter = MockNotificationCenter()
+        let delegate = NotificationDelegate()
+        let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
+        let alert = try makeStage1NotificationTestAlert(fireDate: Date(timeIntervalSince1970: 1_800_000_000))
+
+        await scheduler.scheduleNotification(for: alert, snoozeDurations: [60])
+
+        let request = try #require(mockCenter.pendingRequests.first)
+        #expect(request.categoryIdentifier == NotificationScheduler.stage1Snooze1Category)
+        #expect(NotificationScheduler.stage1CategoryIdentifier(validSnoozeDurations: []) == NotificationScheduler
+            .stage1AlertCategory)
+        #expect(NotificationScheduler.stage1CategoryIdentifier(validSnoozeDurations: [60, 180]) == NotificationScheduler
+            .stage1Snooze3Category)
     }
 }
 

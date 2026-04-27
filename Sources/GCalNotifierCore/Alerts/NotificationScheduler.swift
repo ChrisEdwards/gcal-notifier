@@ -2,9 +2,6 @@ import Foundation
 import OSLog
 @preconcurrency import UserNotifications
 
-// MARK: - NotificationCenterProtocol
-
-/// Protocol abstracting UNUserNotificationCenter for testability.
 public protocol NotificationCenterProtocol: Sendable {
     func add(_ request: UNNotificationRequest) async throws
     func removePendingNotificationRequests(withIdentifiers identifiers: [String])
@@ -17,7 +14,6 @@ public protocol NotificationCenterProtocol: Sendable {
     func setDelegate(_ delegate: any UNUserNotificationCenterDelegate)
 }
 
-/// Simplified authorization status for protocol abstraction.
 public enum NotificationAuthorizationStatus: Sendable, Equatable {
     case notDetermined
     case denied
@@ -37,9 +33,6 @@ public enum NotificationAuthorizationStatus: Sendable, Equatable {
     }
 }
 
-// MARK: - SystemNotificationCenter
-
-/// Wrapper around UNUserNotificationCenter conforming to our protocol.
 public final class SystemNotificationCenter: NotificationCenterProtocol, @unchecked Sendable {
     private let center: UNUserNotificationCenter
 
@@ -85,34 +78,11 @@ public final class SystemNotificationCenter: NotificationCenterProtocol, @unchec
     }
 }
 
-// MARK: - NotificationScheduler
-
-/// Schedules alerts using UNUserNotificationCenter for reliable timing.
-/// Uses system notifications as timing mechanism (survives sleep/wake, DST).
-public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationScheduler {
-    // MARK: - Constants
-
-    /// Category identifier for meeting alerts.
-    public static let meetingAlertCategory = AlertNotificationPayload.modalTimingCategoryIdentifier
-
-    /// Category identifiers for visible OS fallback alerts.
-    public static let stage1AlertCategory = AlertNotificationPayload.stage1CategoryIdentifier
-    public static let stage2AlertCategory = AlertNotificationPayload.stage2CategoryIdentifier
-
-    public static let stage2JoinActionIdentifier = "STAGE2_JOIN"
-    public static let stage2SnoozeActionIdentifier = "STAGE2_SNOOZE_1M"
-    public static let stage2DismissActionIdentifier = "STAGE2_DISMISS"
-    public static let stage2SnoozeDuration: TimeInterval = 60
-
-    // MARK: - Dependencies
-
+public actor NotificationScheduler {
     private let center: any NotificationCenterProtocol
     private var handlers: [String: @Sendable () -> Void] = [:]
     private let delegate: NotificationDelegate
 
-    // MARK: - Initialization
-
-    /// Creates a NotificationScheduler with the default notification center.
     public init() async {
         let center: any NotificationCenterProtocol = SystemNotificationCenter()
         let delegate = NotificationDelegate()
@@ -120,42 +90,35 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
         self.center = center
         self.delegate = delegate
 
-        // Register notification category
         await self.registerCategory()
     }
 
-    /// Creates a NotificationScheduler with custom dependencies (for testing).
     public init(center: any NotificationCenterProtocol, delegate: NotificationDelegate) async {
         center.setDelegate(delegate)
         self.center = center
         self.delegate = delegate
         await self.registerCategory()
     }
+}
 
-    // MARK: - AlertScheduler Protocol
-
+extension NotificationScheduler: AlertScheduler {
     public func schedule(alertId: String, fireDate: Date, handler: @escaping @Sendable () -> Void) async {
-        // Store the handler for when the notification fires
         self.handlers[alertId] = handler
         await self.delegate.register(alertId: alertId) { [weak self] in
             await self?.fireAlert(alertId: alertId)
         }
 
-        // Create notification content
         let content = UNMutableNotificationContent()
         content.categoryIdentifier = Self.meetingAlertCategory
-        // Use silent delivery - we show our own modal
         content.sound = nil
         content.interruptionLevel = .passive
 
-        // Create calendar-based trigger for exact timing
         let dateComponents = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
             from: fireDate
         )
         let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
 
-        // Create and add the request
         let request = UNNotificationRequest(
             identifier: alertId,
             content: content,
@@ -184,11 +147,11 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
         self.handlers.removeAll()
         await self.delegate.unregisterAll()
     }
+}
 
-    // MARK: - DurableAlertNotificationScheduler Protocol
-
-    public func scheduleNotification(for alert: ScheduledAlert) async {
-        let content = Self.makeNotificationContent(for: alert)
+extension NotificationScheduler: DurableAlertNotificationScheduler {
+    public func scheduleNotification(for alert: ScheduledAlert, snoozeDurations: [TimeInterval]) async {
+        let content = Self.makeNotificationContent(for: alert, snoozeDurations: snoozeDurations)
         let trigger = Self.makeCalendarTrigger(fireDate: alert.scheduledFireTime)
         let request = UNNotificationRequest(
             identifier: alert.id,
@@ -218,46 +181,28 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
     public func setAlertCommandHandler(_ handler: @escaping @Sendable (AlertCommand) async -> Void) async {
         await self.delegate.setAlertCommandHandler(handler)
     }
+}
 
-    // MARK: - Permission Management
-
-    /// Requests notification authorization from the user.
-    /// Returns the current authorization status after the request.
-    public func requestAuthorization() async -> NotificationAuthorizationStatus {
+public extension NotificationScheduler {
+    func requestAuthorization() async -> NotificationAuthorizationStatus {
         do {
-            // Request authorization for alerts (timing mechanism)
             _ = try await self.center.requestAuthorization(options: [.alert, .sound, .badge])
-        } catch {
-            // Permission denied or error - fall back to checking status
-        }
+        } catch {}
         return await self.authorizationStatus()
     }
 
-    /// Returns the current notification authorization status.
-    public func authorizationStatus() async -> NotificationAuthorizationStatus {
+    func authorizationStatus() async -> NotificationAuthorizationStatus {
         await self.center.notificationSettings()
     }
 
-    // MARK: - Banner Notifications
-
-    /// Shows an immediate notification banner for a downgraded alert.
-    ///
-    /// Unlike scheduled alerts that fire our custom modal, this shows a system
-    /// notification banner for less intrusive notifications during back-to-back meetings.
-    ///
-    /// - Parameters:
-    ///   - title: The notification title (e.g., "Up Next").
-    ///   - body: The notification body (e.g., "Meeting in 10m").
-    ///   - identifier: Unique identifier for the notification.
-    public func showBannerNotification(title: String, body: String, identifier: String) async {
+    func showBannerNotification(title: String, body: String, identifier: String) async {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = nil // Sound is handled separately by SoundPlayer
+        content.sound = nil
         content.categoryIdentifier = Self.backToBackAlertCategory
         content.interruptionLevel = .passive
 
-        // Immediate trigger (nil trigger means deliver immediately)
         let request = UNNotificationRequest(
             identifier: identifier,
             content: content,
@@ -273,56 +218,171 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
         }
     }
 
-    /// Category identifier for back-to-back (downgraded) alerts.
-    public static let backToBackAlertCategory = "BACK_TO_BACK_ALERT"
+    static var meetingAlertCategory: String {
+        AlertNotificationPayload.modalTimingCategoryIdentifier
+    }
 
-    // MARK: - Private Helpers
+    static var stage1AlertCategory: String {
+        AlertNotificationPayload.stage1CategoryIdentifier
+    }
 
+    static var stage2AlertCategory: String {
+        AlertNotificationPayload.stage2CategoryIdentifier
+    }
+
+    static var stage1Snooze1Category: String {
+        "\(AlertNotificationPayload.stage1CategoryIdentifier)_SNOOZE_1M"
+    }
+
+    static var stage1Snooze3Category: String {
+        "\(AlertNotificationPayload.stage1CategoryIdentifier)_SNOOZE_3M"
+    }
+
+    static var stage1Snooze5Category: String {
+        "\(AlertNotificationPayload.stage1CategoryIdentifier)_SNOOZE_5M"
+    }
+
+    static var stage1Snooze1ActionIdentifier: String {
+        "STAGE1_SNOOZE_1M"
+    }
+
+    static var stage1Snooze3ActionIdentifier: String {
+        "STAGE1_SNOOZE_3M"
+    }
+
+    static var stage1Snooze5ActionIdentifier: String {
+        "STAGE1_SNOOZE_5M"
+    }
+
+    static var stage2JoinActionIdentifier: String {
+        "STAGE2_JOIN"
+    }
+
+    static var stage2SnoozeActionIdentifier: String {
+        "STAGE2_SNOOZE_1M"
+    }
+
+    static var stage2DismissActionIdentifier: String {
+        "STAGE2_DISMISS"
+    }
+
+    static var stage2SnoozeDuration: TimeInterval {
+        60
+    }
+
+    static var backToBackAlertCategory: String {
+        "BACK_TO_BACK_ALERT"
+    }
+
+    static func stage1CategoryIdentifier(validSnoozeDurations durations: [TimeInterval]) -> String {
+        if durations.contains(300) { return self.stage1Snooze5Category }
+        if durations.contains(180) { return self.stage1Snooze3Category }
+        if durations.contains(60) { return self.stage1Snooze1Category }
+        return self.stage1AlertCategory
+    }
+
+    static func snoozeDuration(forActionIdentifier identifier: String) -> TimeInterval? {
+        switch identifier {
+        case self.stage1Snooze1ActionIdentifier, self.stage2SnoozeActionIdentifier:
+            60
+        case self.stage1Snooze3ActionIdentifier:
+            180
+        case self.stage1Snooze5ActionIdentifier:
+            300
+        default:
+            nil
+        }
+    }
+}
+
+private extension NotificationScheduler {
     private func registerCategory() async {
-        let meetingCategory = UNNotificationCategory(
-            identifier: Self.meetingAlertCategory,
-            actions: [],
-            intentIdentifiers: [],
+        self.center.setNotificationCategories(Self.registeredCategories)
+    }
+
+    private static var registeredCategories: Set<UNNotificationCategory> {
+        Set([self.meetingCategory, self.stage2Category, self.backToBackCategory] + self.stage1Categories)
+    }
+
+    private static var meetingCategory: UNNotificationCategory {
+        self.makeCategory(identifier: self.meetingAlertCategory, actions: [], options: [.hiddenPreviewsShowTitle])
+    }
+
+    private static var stage1Categories: [UNNotificationCategory] {
+        [
+            self.makeStage1Category(identifier: self.stage1AlertCategory, snoozeActions: []),
+            self.makeStage1Category(identifier: self.stage1Snooze1Category, snoozeActions: [self.stage1Snooze1Action]),
+            self.makeStage1Category(identifier: self.stage1Snooze3Category, snoozeActions: self.stage1Snooze3Actions),
+            self.makeStage1Category(identifier: self.stage1Snooze5Category, snoozeActions: self.stage1Snooze5Actions),
+        ]
+    }
+
+    private static var stage2Category: UNNotificationCategory {
+        self.makeCategory(
+            identifier: self.stage2AlertCategory,
+            actions: self.stage2Actions,
             options: [.hiddenPreviewsShowTitle]
         )
+    }
 
-        let stage1Category = UNNotificationCategory(
-            identifier: Self.stage1AlertCategory,
-            actions: [],
+    private static var backToBackCategory: UNNotificationCategory {
+        self.makeCategory(identifier: self.backToBackAlertCategory, actions: [], options: [])
+    }
+
+    private static var stage1Snooze3Actions: [UNNotificationAction] {
+        [self.stage1Snooze1Action, self.stage1Snooze3Action]
+    }
+
+    private static var stage1Snooze5Actions: [UNNotificationAction] {
+        [self.stage1Snooze1Action, self.stage1Snooze3Action, self.stage1Snooze5Action]
+    }
+
+    private static var stage2Actions: [UNNotificationAction] {
+        [self.stage2JoinAction, self.stage2SnoozeAction, self.stage2DismissAction]
+    }
+
+    private static var stage1Snooze1Action: UNNotificationAction {
+        UNNotificationAction(identifier: stage1Snooze1ActionIdentifier, title: "Snooze 1m", options: [])
+    }
+
+    private static var stage1Snooze3Action: UNNotificationAction {
+        UNNotificationAction(identifier: stage1Snooze3ActionIdentifier, title: "Snooze 3m", options: [])
+    }
+
+    private static var stage1Snooze5Action: UNNotificationAction {
+        UNNotificationAction(identifier: stage1Snooze5ActionIdentifier, title: "Snooze 5m", options: [])
+    }
+
+    private static var stage2JoinAction: UNNotificationAction {
+        UNNotificationAction(identifier: stage2JoinActionIdentifier, title: "Join", options: [.foreground])
+    }
+
+    private static var stage2SnoozeAction: UNNotificationAction {
+        UNNotificationAction(identifier: stage2SnoozeActionIdentifier, title: "Snooze 1m", options: [])
+    }
+
+    private static var stage2DismissAction: UNNotificationAction {
+        UNNotificationAction(identifier: stage2DismissActionIdentifier, title: "Dismiss", options: [])
+    }
+
+    private static func makeStage1Category(
+        identifier: String,
+        snoozeActions: [UNNotificationAction]
+    ) -> UNNotificationCategory {
+        self.makeCategory(identifier: identifier, actions: snoozeActions, options: [.hiddenPreviewsShowTitle])
+    }
+
+    private static func makeCategory(
+        identifier: String,
+        actions: [UNNotificationAction],
+        options: UNNotificationCategoryOptions
+    ) -> UNNotificationCategory {
+        UNNotificationCategory(
+            identifier: identifier,
+            actions: actions,
             intentIdentifiers: [],
-            options: [.hiddenPreviewsShowTitle]
+            options: options
         )
-
-        let joinAction = UNNotificationAction(
-            identifier: Self.stage2JoinActionIdentifier,
-            title: "Join",
-            options: [.foreground]
-        )
-        let snoozeAction = UNNotificationAction(
-            identifier: Self.stage2SnoozeActionIdentifier,
-            title: "Snooze 1m",
-            options: []
-        )
-        let dismissAction = UNNotificationAction(
-            identifier: Self.stage2DismissActionIdentifier,
-            title: "Dismiss",
-            options: []
-        )
-        let stage2Category = UNNotificationCategory(
-            identifier: Self.stage2AlertCategory,
-            actions: [joinAction, snoozeAction, dismissAction],
-            intentIdentifiers: [],
-            options: [.hiddenPreviewsShowTitle]
-        )
-
-        let backToBackCategory = UNNotificationCategory(
-            identifier: Self.backToBackAlertCategory,
-            actions: [],
-            intentIdentifiers: [],
-            options: []
-        )
-
-        self.center.setNotificationCategories([meetingCategory, stage1Category, stage2Category, backToBackCategory])
     }
 
     private func fireAlert(alertId: String) async {
@@ -331,15 +391,26 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
         handler()
     }
 
-    private static func makeNotificationContent(for alert: ScheduledAlert) -> UNMutableNotificationContent {
+    private static func makeNotificationContent(
+        for alert: ScheduledAlert,
+        snoozeDurations: [TimeInterval]
+    ) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = alert.notificationPayload.title
         content.body = alert.notificationPayload.body
-        content.categoryIdentifier = alert.notificationPayload.categoryIdentifier
+        content.categoryIdentifier = Self.categoryIdentifier(for: alert, snoozeDurations: snoozeDurations)
         content.sound = Self.notificationSound(for: alert.notificationPayload.soundBehavior)
         content.interruptionLevel = Self.interruptionLevel(for: alert.notificationPayload.urgency)
         content.userInfo = Self.userInfo(for: alert)
         return content
+    }
+
+    private static func categoryIdentifier(
+        for alert: ScheduledAlert,
+        snoozeDurations: [TimeInterval]
+    ) -> String {
+        guard alert.stage == .stage1 else { return alert.notificationPayload.categoryIdentifier }
+        return self.stage1CategoryIdentifier(validSnoozeDurations: snoozeDurations)
     }
 
     private static func makeCalendarTrigger(fireDate: Date) -> UNCalendarNotificationTrigger {

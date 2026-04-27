@@ -73,11 +73,13 @@ actor MockAlertDelivery: AlertDelivery {
 /// Mock durable notification scheduler that tracks scheduled and cancelled OS notifications.
 actor MockDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
     private(set) var scheduledNotifications: [ScheduledAlert] = []
+    private(set) var scheduledSnoozeDurations: [String: [TimeInterval]] = [:]
     private(set) var cancelledNotificationIds: [String] = []
     private(set) var cancelAllCallCount = 0
 
-    func scheduleNotification(for alert: ScheduledAlert) {
+    func scheduleNotification(for alert: ScheduledAlert, snoozeDurations: [TimeInterval]) {
         self.scheduledNotifications.append(alert)
+        self.scheduledSnoozeDurations[alert.id] = snoozeDurations
     }
 
     func cancelNotification(alertId: String) {

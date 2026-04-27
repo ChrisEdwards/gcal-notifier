@@ -19,17 +19,20 @@ public struct AlertWindowActions {
     public let onSnooze: @MainActor (TimeInterval) -> Void
     public let onOpenCalendar: @MainActor () -> Void
     public let onDismiss: @MainActor () -> Void
+    public let snoozeDurations: [TimeInterval]
 
     public init(
         onJoin: @escaping @MainActor () -> Void,
         onSnooze: @escaping @MainActor (TimeInterval) -> Void,
         onOpenCalendar: @escaping @MainActor () -> Void,
-        onDismiss: @escaping @MainActor () -> Void
+        onDismiss: @escaping @MainActor () -> Void,
+        snoozeDurations: [TimeInterval] = AlertSnoozePolicy.supportedDurations
     ) {
         self.onJoin = onJoin
         self.onSnooze = onSnooze
         self.onOpenCalendar = onOpenCalendar
         self.onDismiss = onDismiss
+        self.snoozeDurations = snoozeDurations
     }
 }
 
@@ -85,7 +88,9 @@ struct PlaceholderAlertContent: View {
                         .keyboardShortcut(.return, modifiers: [])
                 }
 
-                Button("Snooze 5m") { self.actions.onSnooze(5 * 60) }
+                ForEach(self.actions.snoozeDurations, id: \.self) { duration in
+                    Button("Snooze \(Int(duration / 60))m") { self.actions.onSnooze(duration) }
+                }
 
                 Button("Open Calendar") { self.actions.onOpenCalendar() }
 
@@ -117,7 +122,8 @@ public struct DefaultAlertContentProvider: AlertContentProvider {
             onJoin: actions.onJoin,
             onSnooze: actions.onSnooze,
             onOpenCalendar: actions.onOpenCalendar,
-            onDismiss: actions.onDismiss
+            onDismiss: actions.onDismiss,
+            snoozeDurations: actions.snoozeDurations
         )
     }
 }
@@ -254,7 +260,8 @@ public extension AlertWindowController {
         for event: CalendarEvent,
         stage: AlertStage,
         snoozed: Bool = false,
-        snoozeContext: String? = nil
+        snoozeContext: String? = nil,
+        snoozeDurations: [TimeInterval] = AlertSnoozePolicy.supportedDurations
     ) {
         self.currentEvent = event
         self.currentStage = stage
@@ -263,7 +270,8 @@ public extension AlertWindowController {
             onJoin: { [weak self] in self?.joinMeeting() },
             onSnooze: { [weak self] duration in self?.snoozeMeeting(duration: duration) },
             onOpenCalendar: { [weak self] in self?.openInCalendar() },
-            onDismiss: { [weak self] in self?.dismiss() }
+            onDismiss: { [weak self] in self?.dismiss() },
+            snoozeDurations: snoozeDurations
         )
 
         // Create content view using default provider
@@ -305,6 +313,7 @@ public extension AlertWindowController {
         stage: AlertStage,
         snoozed: Bool = false,
         snoozeContext: String? = nil,
+        snoozeDurations: [TimeInterval] = AlertSnoozePolicy.supportedDurations,
         contentProvider: some AlertContentProvider
     ) {
         self.currentEvent = event
@@ -314,7 +323,8 @@ public extension AlertWindowController {
             onJoin: { [weak self] in self?.joinMeeting() },
             onSnooze: { [weak self] duration in self?.snoozeMeeting(duration: duration) },
             onOpenCalendar: { [weak self] in self?.openInCalendar() },
-            onDismiss: { [weak self] in self?.dismiss() }
+            onDismiss: { [weak self] in self?.dismiss() },
+            snoozeDurations: snoozeDurations
         )
 
         let contentView = contentProvider.makeContentView(

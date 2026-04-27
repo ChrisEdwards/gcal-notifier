@@ -52,6 +52,70 @@ struct AlertEngineCommandTests {
         await expectOnlyStage1Completed(context)
     }
 
+    @Test("Stage 1 valid snooze durations stop before Stage 2")
+    func stage1ValidSnoozeDurationsStopBeforeStage2() async throws {
+        nonisolated(unsafe) var currentTime = stageBoundaryBaseTime
+        let context = try makeStageBoundaryCommandContext(dateProvider: { currentTime })
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        currentTime = context.event.startTime.addingTimeInterval(-4 * 60)
+
+        #expect(await context.engine.validSnoozeDurations(alertId: context.stage1AlertId) == [60])
+    }
+
+    @Test("Stage 1 notification snooze options are computed at fire time")
+    func stage1NotificationSnoozeOptionsAreComputedAtFireTime() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+        let durableScheduler = MockDurableAlertNotificationScheduler()
+        let now = Date(timeIntervalSince1970: 1_800_850_000)
+        let event = makeAlertTestEvent(id: "event-1", startTime: now.addingTimeInterval(20 * 60))
+        let engine = AlertEngine(
+            alertsStore: ScheduledAlertsStore(fileURL: fileURL),
+            scheduler: MockAlertScheduler(),
+            delivery: MockAlertDelivery(),
+            durableNotificationScheduler: durableScheduler,
+            dateProvider: { now }
+        )
+
+        try await engine.scheduleAlerts(
+            for: [event],
+            settings: makeAlertTestSettings(stage1Minutes: 4, stage2Minutes: 2)
+        )
+
+        let stage1Id = event.alertIdentifier(for: .stage1)
+        #expect(await durableScheduler.scheduledSnoozeDurations[stage1Id] == [60])
+    }
+
+    @Test("Stage 1 snooze command rejects Stage 2 collision")
+    func stage1SnoozeCommandRejectsStage2Collision() async throws {
+        nonisolated(unsafe) var currentTime = stageBoundaryBaseTime
+        let context = try makeStageBoundaryCommandContext(dateProvider: { currentTime })
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        currentTime = context.event.startTime.addingTimeInterval(-4 * 60)
+        let result = await context.engine.handleAlertCommand(.snooze(alertId: context.stage1AlertId, duration: 180))
+
+        #expect(result == .rejected(alertId: context.stage1AlertId, error: .snoozePastStage2))
+        await expectNoStageCommandCleanup(context)
+    }
+
+    @Test("Valid Stage 1 snooze preserves Stage 2")
+    func validStage1SnoozePreservesStage2() async throws {
+        nonisolated(unsafe) var currentTime = stageBoundaryBaseTime
+        let context = try makeStageBoundaryCommandContext(dateProvider: { currentTime })
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        currentTime = context.event.startTime.addingTimeInterval(-4 * 60)
+        let result = await context.engine.handleAlertCommand(.snooze(alertId: context.stage1AlertId, duration: 60))
+
+        expectCommandSnoozed(result, alertId: context.stage1AlertId)
+        await expectStage1SnoozedAndStage2Preserved(context, expectedFireTime: currentTime.addingTimeInterval(60))
+    }
+
     @Test("Snooze command updates alert state and replaces Stage 2 effects")
     func snoozeCommandUpdatesAlertStateAndReplacesStage2Effects() async throws {
         let context = try makeCommandContext()
@@ -143,6 +207,8 @@ private struct StageCommandContext {
     let stage2AlertId: String
 }
 
+private let stageBoundaryBaseTime = Date(timeIntervalSince1970: 1_800_800_000)
+
 private func makeCommandContext() throws -> CommandContext {
     let fileURL = makeAlertTestTempFileURL()
     let store = ScheduledAlertsStore(fileURL: fileURL)
@@ -189,6 +255,34 @@ private func makeStageCommandContext() throws -> StageCommandContext {
         delivery: delivery,
         durableNotificationScheduler: durableScheduler,
         dateProvider: { now }
+    )
+
+    return StageCommandContext(
+        fileURL: fileURL,
+        settings: settings,
+        scheduler: scheduler,
+        durableScheduler: durableScheduler,
+        engine: engine,
+        event: event,
+        stage1AlertId: event.alertIdentifier(for: .stage1),
+        stage2AlertId: event.alertIdentifier(for: .stage2)
+    )
+}
+
+private func makeStageBoundaryCommandContext(
+    dateProvider: @escaping @Sendable () -> Date
+) throws -> StageCommandContext {
+    let fileURL = makeAlertTestTempFileURL()
+    let scheduler = MockAlertScheduler()
+    let durableScheduler = MockDurableAlertNotificationScheduler()
+    let settings = try makeAlertTestSettings(stage1Minutes: 10, stage2Minutes: 2)
+    let event = makeAlertTestEvent(id: "event-1", startTime: stageBoundaryBaseTime.addingTimeInterval(20 * 60))
+    let engine = AlertEngine(
+        alertsStore: ScheduledAlertsStore(fileURL: fileURL),
+        scheduler: scheduler,
+        delivery: MockAlertDelivery(),
+        durableNotificationScheduler: durableScheduler,
+        dateProvider: dateProvider
     )
 
     return StageCommandContext(
@@ -266,6 +360,32 @@ private func expectOnlyStage1Completed(_ context: StageCommandContext) async {
     #expect(remaining.contains { $0.id == context.stage2AlertId })
     #expect(acknowledged.contains(context.stage1AlertId))
     #expect(!acknowledged.contains(context.stage2AlertId))
+    #expect(cancelledAlerts.contains(context.stage1AlertId))
+    #expect(cancelledNotifications.contains(context.stage1AlertId))
+    #expect(!cancelledAlerts.contains(context.stage2AlertId))
+    #expect(!cancelledNotifications.contains(context.stage2AlertId))
+}
+
+private func expectNoStageCommandCleanup(_ context: StageCommandContext) async {
+    let remaining = await context.engine.scheduledAlerts
+    #expect(remaining.contains { $0.id == context.stage1AlertId })
+    #expect(remaining.contains { $0.id == context.stage2AlertId })
+    #expect(await context.scheduler.cancelledAlertIds.isEmpty)
+    #expect(await context.durableScheduler.cancelledNotificationIds.isEmpty)
+}
+
+private func expectStage1SnoozedAndStage2Preserved(
+    _ context: StageCommandContext,
+    expectedFireTime: Date
+) async {
+    let alerts = await context.engine.scheduledAlerts
+    let stage1 = alerts.first { $0.id == context.stage1AlertId }
+    let stage2 = alerts.first { $0.id == context.stage2AlertId }
+    let cancelledAlerts = await context.scheduler.cancelledAlertIds
+    let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    #expect(stage1?.scheduledFireTime == expectedFireTime)
+    #expect(stage1?.snoozeCount == 1)
+    #expect(stage2?.scheduledFireTime == context.event.startTime.addingTimeInterval(-2 * 60))
     #expect(cancelledAlerts.contains(context.stage1AlertId))
     #expect(cancelledNotifications.contains(context.stage1AlertId))
     #expect(!cancelledAlerts.contains(context.stage2AlertId))
