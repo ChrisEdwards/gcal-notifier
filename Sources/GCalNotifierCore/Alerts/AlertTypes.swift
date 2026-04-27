@@ -7,6 +7,32 @@ public protocol AlertDelivery: Sendable {
     func deliverDowngraded(alert: ScheduledAlert, reason: AlertDowngradeReason) async
 }
 
+// MARK: - Alert Commands
+
+/// User intent from either the modal or the OS notification.
+public enum AlertCommand: Sendable, Equatable {
+    case join(alertId: String)
+    case dismiss(alertId: String)
+    case showContext(alertId: String)
+
+    public var alertId: String {
+        switch self {
+        case let .join(alertId),
+             let .dismiss(alertId),
+             let .showContext(alertId):
+            alertId
+        }
+    }
+}
+
+/// Result of applying an alert command to shared alert state.
+public enum AlertCommandResult: Sendable, Equatable {
+    case completed(ScheduledAlert)
+    case presented(ScheduledAlert)
+    case missingAlert(alertId: String)
+    case noOp(alertId: String)
+}
+
 // MARK: - Alert Downgrade Reason
 
 /// Reason why an alert was downgraded from modal to notification banner.

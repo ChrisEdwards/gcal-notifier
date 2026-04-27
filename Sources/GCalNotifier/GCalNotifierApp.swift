@@ -347,7 +347,7 @@ extension AppDelegate {
             )
             await self.configureAlertEngineProviders(engine)
             self.alertEngine = engine
-            await MainActor.run { delivery.setAlertEngine(engine) }
+            await delivery.setAlertEngine(engine)
 
             do {
                 try await engine.reconcileOnRelaunch()

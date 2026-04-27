@@ -1,6 +1,6 @@
 import Foundation
 import OSLog
-import UserNotifications
+@preconcurrency import UserNotifications
 
 // MARK: - NotificationCenterProtocol
 
@@ -97,6 +97,9 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
 
     /// Category identifier for visible urgent stage 2 alerts.
     public static let stage2AlertCategory = AlertNotificationPayload.stage2CategoryIdentifier
+
+    public static let stage2JoinActionIdentifier = "STAGE2_JOIN"
+    public static let stage2DismissActionIdentifier = "STAGE2_DISMISS"
 
     // MARK: - Dependencies
 
@@ -209,6 +212,10 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
         self.center.removeAllDeliveredNotifications()
     }
 
+    public func setAlertCommandHandler(_ handler: @escaping @Sendable (AlertCommand) async -> Void) async {
+        await self.delegate.setAlertCommandHandler(handler)
+    }
+
     // MARK: - Permission Management
 
     /// Requests notification authorization from the user.
@@ -269,8 +276,6 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
     // MARK: - Private Helpers
 
     private func registerCategory() async {
-        // Define category with hidden presentation
-        // We intercept the notification before display to show our own modal
         let meetingCategory = UNNotificationCategory(
             identifier: Self.meetingAlertCategory,
             actions: [],
@@ -278,16 +283,23 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
             options: [.hiddenPreviewsShowTitle]
         )
 
-        // Define category for durable urgent alerts - these must be visible when
-        // macOS presents them outside the app's modal path.
+        let joinAction = UNNotificationAction(
+            identifier: Self.stage2JoinActionIdentifier,
+            title: "Join",
+            options: [.foreground]
+        )
+        let dismissAction = UNNotificationAction(
+            identifier: Self.stage2DismissActionIdentifier,
+            title: "Dismiss",
+            options: []
+        )
         let stage2Category = UNNotificationCategory(
             identifier: Self.stage2AlertCategory,
-            actions: [],
+            actions: [joinAction, dismissAction],
             intentIdentifiers: [],
             options: [.hiddenPreviewsShowTitle]
         )
 
-        // Define category for back-to-back alerts - these show as banners
         let backToBackCategory = UNNotificationCategory(
             identifier: Self.backToBackAlertCategory,
             actions: [],
@@ -376,90 +388,5 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
 
     private static func iso8601String(from date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
-    }
-}
-
-// MARK: - NotificationDelegate
-
-/// Delegate that intercepts notification delivery to invoke custom handlers.
-/// Acts as the bridge between system notifications and our alert system.
-public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
-    private var alertHandlers: [String: @Sendable () async -> Void] = [:]
-
-    override public init() {
-        super.init()
-    }
-
-    // MARK: - Presentation Options
-
-    /// Returns the presentation options for a given notification category.
-    static func presentationOptions(forCategoryIdentifier identifier: String) -> UNNotificationPresentationOptions {
-        let shouldShowBanner = identifier == NotificationScheduler.backToBackAlertCategory ||
-            identifier == NotificationScheduler.stage2AlertCategory
-
-        if shouldShowBanner {
-            return [.banner, .list]
-        }
-        return []
-    }
-
-    /// Registers a handler for when a notification with the given ID is delivered.
-    public func register(alertId: String, handler: @escaping @Sendable () async -> Void) {
-        self.alertHandlers[alertId] = handler
-    }
-
-    /// Unregisters the handler for a notification.
-    public func unregister(alertId: String) {
-        self.alertHandlers.removeValue(forKey: alertId)
-    }
-
-    /// Unregisters all handlers.
-    public func unregisterAll() {
-        self.alertHandlers.removeAll()
-    }
-
-    // MARK: - UNUserNotificationCenterDelegate
-
-    /// Called when a notification is about to be presented while the app is in foreground.
-    /// We intercept this to show our custom modal instead of the system banner.
-    public nonisolated func userNotificationCenter(
-        _: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        let identifier = notification.request.identifier
-        let categoryIdentifier = notification.request.content.categoryIdentifier
-
-        if categoryIdentifier == NotificationScheduler.meetingAlertCategory {
-            // Fire the handler asynchronously for intercepted alerts.
-            Task {
-                await self.fireHandlerInternal(for: identifier)
-            }
-        }
-
-        return Self.presentationOptions(forCategoryIdentifier: categoryIdentifier)
-    }
-
-    /// Called when user interacts with a notification (app in background).
-    public nonisolated func userNotificationCenter(
-        _: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        let identifier = response.notification.request.identifier
-
-        // Fire the handler for background delivery
-        await self.fireHandlerInternal(for: identifier)
-    }
-
-    // MARK: - Internal (for testing)
-
-    /// Fires the handler for a given alert ID. Exposed for testing purposes.
-    public func testFireHandler(alertId: String) async {
-        await self.fireHandlerInternal(for: alertId)
-    }
-
-    private func fireHandlerInternal(for alertId: String) async {
-        guard let handler = alertHandlers[alertId] else { return }
-        self.alertHandlers.removeValue(forKey: alertId)
-        await handler()
     }
 }

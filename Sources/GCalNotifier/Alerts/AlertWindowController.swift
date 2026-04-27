@@ -140,6 +140,10 @@ public final class AlertWindowController: NSWindowController {
     private var currentStage: AlertStage?
     private var alertEngine: AlertEngine?
     private var isSnoozing = false
+    private var isCompletingAction = false
+    private var urlOpener: @MainActor @Sendable (URL) -> Void = { url in
+        NSWorkspace.shared.open(url)
+    }
 
     /// Detects if running in a test environment to avoid showing actual windows.
     private static var isRunningTests: Bool {
@@ -194,6 +198,10 @@ public final class AlertWindowController: NSWindowController {
     /// Sets the AlertEngine instance for handling snooze and acknowledge actions.
     public func setAlertEngine(_ engine: AlertEngine) {
         self.alertEngine = engine
+    }
+
+    public func setURLOpener(_ opener: @escaping @MainActor @Sendable (URL) -> Void) {
+        self.urlOpener = opener
     }
 
     private func configureWindow() {
@@ -344,13 +352,16 @@ public extension AlertWindowController {
 // MARK: - Actions
 
 extension AlertWindowController {
-    private func joinMeeting() {
+    func joinMeeting() {
         guard let event = currentEvent,
-              let url = event.primaryMeetingURL else { return }
+              let stage = currentStage,
+              let url = event.primaryMeetingURL
+        else { return }
 
-        NSWorkspace.shared.open(url)
+        let alertId = event.alertIdentifier(for: stage)
+        self.urlOpener(url)
         Logger.alerts.info("Joining meeting: \(event.id)")
-        self.dismiss()
+        self.completeCurrentAlert(.join(alertId: alertId)) { _ in }
     }
 
     private func snoozeMeeting(duration: TimeInterval) {
@@ -388,21 +399,36 @@ extension AlertWindowController {
         // Don't close - user might want to come back
     }
 
-    private func dismiss() {
+    func dismiss() {
         guard let event = currentEvent,
-              let stage = currentStage,
-              let engine = alertEngine
+              let stage = currentStage
         else {
             close()
             return
         }
 
         let alertId = event.alertIdentifier(for: stage)
-        Task {
-            await engine.acknowledgeAlert(alertId: alertId, eventStartTime: event.startTime)
+        self.completeCurrentAlert(.dismiss(alertId: alertId)) { result in
+            guard case .completed = result else { return }
             Logger.alerts.info("Dismissed alert \(stage.rawValue) for: \(event.id)")
         }
-        close()
+    }
+
+    private func completeCurrentAlert(
+        _ command: AlertCommand,
+        completion: @escaping @MainActor (AlertCommandResult) -> Void
+    ) {
+        guard let engine = alertEngine else {
+            close()
+            return
+        }
+
+        self.isCompletingAction = true
+        Task { @MainActor in
+            let result = await engine.handleAlertCommand(command)
+            completion(result)
+            close()
+        }
     }
 }
 
@@ -411,9 +437,13 @@ extension AlertWindowController {
 extension AlertWindowController: NSWindowDelegate {
     public func windowWillClose(_: Notification) {
         // Acknowledge when window is closed via close button
-        defer { self.isSnoozing = false }
+        defer {
+            self.isSnoozing = false
+            self.isCompletingAction = false
+        }
 
         guard !self.isSnoozing else { return }
+        guard !self.isCompletingAction else { return }
         if let event = currentEvent, let stage = currentStage, let engine = alertEngine {
             let alertId = event.alertIdentifier(for: stage)
             Task {

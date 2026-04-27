@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GCalNotifierCore
 import OSLog
@@ -9,6 +10,7 @@ public final class WindowAlertDelivery: AlertDelivery {
     private let eventCache: EventCache
     private let settings: SettingsStore
     private let scheduler: NotificationScheduler
+    private let urlOpener: @MainActor @Sendable (URL) -> Void
 
     /// Alert engine - set after construction to break circular dependency
     private var alertEngine: AlertEngine?
@@ -20,17 +22,26 @@ public final class WindowAlertDelivery: AlertDelivery {
         windowController: AlertWindowController,
         eventCache: EventCache,
         settings: SettingsStore,
-        scheduler: NotificationScheduler
+        scheduler: NotificationScheduler,
+        urlOpener: @escaping @MainActor @Sendable (URL) -> Void = { url in
+            NSWorkspace.shared.open(url)
+        }
     ) {
         self.windowController = windowController
         self.eventCache = eventCache
         self.settings = settings
         self.scheduler = scheduler
+        self.urlOpener = urlOpener
     }
 
     /// Sets the alert engine after construction (breaks circular dependency)
-    public func setAlertEngine(_ engine: AlertEngine) {
+    public func setAlertEngine(_ engine: AlertEngine) async {
         self.alertEngine = engine
+        await self.scheduler.setAlertCommandHandler { [weak self, weak engine] command in
+            guard let engine else { return }
+            let result = await engine.handleAlertCommand(command)
+            await self?.completeNotificationCommand(command, result: result)
+        }
     }
 
     public nonisolated func deliver(alert: ScheduledAlert) async {
@@ -104,6 +115,15 @@ public final class WindowAlertDelivery: AlertDelivery {
             "Using alert snapshot fallback for \(alert.id) (stage=\(alert.stage.rawValue))"
         )
         return alert.fallbackCalendarEvent
+    }
+
+    @MainActor
+    private func completeNotificationCommand(_ command: AlertCommand, result: AlertCommandResult) {
+        guard case .join = command,
+              case let .completed(alert) = result,
+              let joinURL = alert.joinURL
+        else { return }
+        self.urlOpener(joinURL)
     }
 
     private func loadEvent(for alert: ScheduledAlert) async -> CalendarEvent? {

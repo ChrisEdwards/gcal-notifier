@@ -1,0 +1,136 @@
+import Foundation
+import Testing
+@testable import GCalNotifierCore
+
+@Suite("AlertEngine Command Tests")
+struct AlertEngineCommandTests {
+    @Test("Join command acknowledges and cleans Stage 2 effects")
+    func joinCommandAcknowledgesAndCleansStage2Effects() async throws {
+        let context = try makeCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        let result = await context.engine.handleAlertCommand(.join(alertId: context.alertId))
+
+        expectCommandCompleted(result, alertId: context.alertId)
+        await expectAlertCleanedUp(context)
+    }
+
+    @Test("Dismiss command acknowledges and cleans Stage 2 effects")
+    func dismissCommandAcknowledgesAndCleansStage2Effects() async throws {
+        let context = try makeCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        let result = await context.engine.handleAlertCommand(.dismiss(alertId: context.alertId))
+
+        expectCommandCompleted(result, alertId: context.alertId)
+        await expectAlertCleanedUp(context)
+    }
+
+    @Test("Repeated command no-ops after first completion")
+    func repeatedCommandNoOpsAfterFirstCompletion() async throws {
+        let context = try makeCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        _ = await context.engine.handleAlertCommand(.dismiss(alertId: context.alertId))
+        let secondResult = await context.engine.handleAlertCommand(.dismiss(alertId: context.alertId))
+
+        #expect(secondResult == .missingAlert(alertId: context.alertId))
+    }
+
+    @Test("Missing alert command no-ops")
+    func missingAlertCommandNoOps() async throws {
+        let context = try makeCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        let result = await context.engine.handleAlertCommand(.join(alertId: context.alertId))
+
+        #expect(result == .missingAlert(alertId: context.alertId))
+        #expect(await context.scheduler.cancelledAlertIds.isEmpty)
+        #expect(await context.durableScheduler.cancelledNotificationIds.isEmpty)
+    }
+
+    @Test("Default activation presents context without acknowledging")
+    func defaultActivationPresentsContextWithoutAcknowledging() async throws {
+        let context = try makeCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        let result = await context.engine.handleAlertCommand(.showContext(alertId: context.alertId))
+
+        expectCommandPresented(result, alertId: context.alertId)
+        #expect(await context.delivery.deliveredAlerts.map(\.id) == [context.alertId])
+        let remaining = await context.engine.scheduledAlerts
+        #expect(remaining.contains { $0.id == context.alertId })
+        #expect(await context.durableScheduler.cancelledNotificationIds.isEmpty)
+    }
+}
+
+private struct CommandContext {
+    let fileURL: URL
+    let settings: SettingsStore
+    let scheduler: MockAlertScheduler
+    let durableScheduler: MockDurableAlertNotificationScheduler
+    let delivery: MockAlertDelivery
+    let engine: AlertEngine
+    let event: CalendarEvent
+    let alertId: String
+}
+
+private func makeCommandContext() throws -> CommandContext {
+    let fileURL = makeAlertTestTempFileURL()
+    let store = ScheduledAlertsStore(fileURL: fileURL)
+    let scheduler = MockAlertScheduler()
+    let durableScheduler = MockDurableAlertNotificationScheduler()
+    let delivery = MockAlertDelivery()
+    let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 5)
+    let eventStart = Date(timeIntervalSince1970: 1_800_300_000)
+    let event = makeAlertTestEvent(id: "event-1", startTime: eventStart)
+    let engine = AlertEngine(
+        alertsStore: store,
+        scheduler: scheduler,
+        delivery: delivery,
+        durableNotificationScheduler: durableScheduler,
+        dateProvider: { eventStart.addingTimeInterval(-10 * 60) }
+    )
+
+    return CommandContext(
+        fileURL: fileURL,
+        settings: settings,
+        scheduler: scheduler,
+        durableScheduler: durableScheduler,
+        delivery: delivery,
+        engine: engine,
+        event: event,
+        alertId: event.alertIdentifier(for: .stage2)
+    )
+}
+
+private func expectCommandCompleted(_ result: AlertCommandResult, alertId: String) {
+    guard case let .completed(alert) = result else {
+        Issue.record("Expected completed command result")
+        return
+    }
+    #expect(alert.id == alertId)
+}
+
+private func expectCommandPresented(_ result: AlertCommandResult, alertId: String) {
+    guard case let .presented(alert) = result else {
+        Issue.record("Expected presented command result")
+        return
+    }
+    #expect(alert.id == alertId)
+}
+
+private func expectAlertCleanedUp(_ context: CommandContext) async {
+    let remaining = await context.engine.scheduledAlerts
+    let cancelledAlerts = await context.scheduler.cancelledAlertIds
+    let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    let acknowledged = await context.engine.acknowledgedAlerts
+    #expect(!remaining.contains { $0.id == context.alertId })
+    #expect(cancelledAlerts.contains(context.alertId))
+    #expect(cancelledNotifications.contains(context.alertId))
+    #expect(acknowledged.contains(context.alertId))
+}

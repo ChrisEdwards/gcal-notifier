@@ -17,23 +17,17 @@ public actor AlertEngine {
     /// Provider for presentation mode suppression. Set this to enable screen share/DND detection during alerts.
     private var presentationModeProvider: (@Sendable () async -> AlertDowngradeReason?)?
 
-    /// Grace period for late scheduling when sync happens just after a stage boundary.
     private static let lateStageGracePeriod: TimeInterval = 2 * 60
     private static let localStage2TriggerFreshnessWindow: TimeInterval = 5 * 60
 
-    /// Currently scheduled alerts.
     public var scheduledAlerts: [ScheduledAlert] {
         Array(self.alerts.values)
     }
 
-    /// Alert IDs that have been acknowledged (dismissing only skips that specific stage).
     public var acknowledgedAlerts: Set<String> {
         Set(self.acknowledgedAlertStartTimes.keys)
     }
 
-    // MARK: - Initialization
-
-    /// Creates an AlertEngine with the default dependencies.
     public init(alertsStore: ScheduledAlertsStore) async {
         self.alertsStore = alertsStore
         self.scheduler = DispatchAlertScheduler()
@@ -42,7 +36,6 @@ public actor AlertEngine {
         self.dateProvider = { Date() }
     }
 
-    /// Creates an AlertEngine with custom dependencies (for testing).
     public init(
         alertsStore: ScheduledAlertsStore,
         scheduler: AlertScheduler,
@@ -57,10 +50,6 @@ public actor AlertEngine {
         self.dateProvider = dateProvider
     }
 
-    // MARK: - Core Operations
-
-    /// Schedules alerts for the given events based on user settings.
-    /// Creates stage 1 (early warning) and stage 2 (urgent reminder) alerts.
     public func scheduleAlerts(for events: [CalendarEvent], settings: SettingsStore) async {
         let now = self.dateProvider()
         let stage1Minutes = settings.alertStage1Minutes
@@ -87,7 +76,6 @@ public actor AlertEngine {
         await self.persistAlerts()
     }
 
-    /// Cancels all alerts for the given event.
     public func cancelAlerts(for eventId: String) async {
         let alertsToCancel = self.alerts.values.filter { $0.eventId == eventId }
         for alert in alertsToCancel {
@@ -97,23 +85,18 @@ public actor AlertEngine {
         await self.persistAlerts()
     }
 
-    /// Marks a specific alert as acknowledged, preventing only that stage from re-firing.
-    /// Other stages for the same event will still fire.
     public func acknowledgeAlert(alertId: String, eventStartTime: Date) async {
         self.acknowledgedAlertStartTimes[alertId] = eventStartTime
         await self.cancelAlert(alertId: alertId)
     }
 
-    /// Cancels a specific alert by ID.
-    private func cancelAlert(alertId: String) async {
-        if let alert = self.alerts[alertId] {
-            await self.cancelScheduledDelivery(for: alert)
-        } else {
-            await self.scheduler.cancel(alertId: alertId)
-            await self.durableNotificationScheduler.cancelNotification(alertId: alertId)
+    public func handleAlertCommand(_ command: AlertCommand) async -> AlertCommandResult {
+        switch command {
+        case let .join(alertId), let .dismiss(alertId):
+            await self.completeAlertCommand(alertId: alertId)
+        case let .showContext(alertId):
+            await self.showAlertContext(alertId: alertId)
         }
-        self.alerts.removeValue(forKey: alertId)
-        await self.persistAlerts()
     }
 
     public func snooze(alertId: String, duration: TimeInterval) async throws {
@@ -143,8 +126,6 @@ public actor AlertEngine {
         await self.persistAlerts()
     }
 
-    /// Reconciles alerts with a new set of events.
-    /// Removes alerts for deleted events and schedules new ones.
     public func reconcile(newEvents: [CalendarEvent], settings: SettingsStore) async {
         let newEventIds = Set(newEvents.map(\.qualifiedId))
         let eventsById = Dictionary(uniqueKeysWithValues: newEvents.map { ($0.qualifiedId, $0) })
@@ -215,6 +196,40 @@ public actor AlertEngine {
 }
 
 private extension AlertEngine {
+    func completeAlertCommand(alertId: String) async -> AlertCommandResult {
+        guard let alert = self.alerts[alertId] else {
+            return .missingAlert(alertId: alertId)
+        }
+
+        self.acknowledgedAlertStartTimes[alertId] = alert.eventStartTime
+        await self.cancelAlert(alertId: alertId)
+        return .completed(alert)
+    }
+
+    func showAlertContext(alertId: String) async -> AlertCommandResult {
+        guard let alert = self.alerts[alertId] else {
+            return .missingAlert(alertId: alertId)
+        }
+        guard self.isRelevantForAlertContext(alert) else {
+            return .noOp(alertId: alertId)
+        }
+
+        await self.delivery.deliver(alert: alert)
+        await self.persistAlerts()
+        return .presented(alert)
+    }
+
+    func cancelAlert(alertId: String) async {
+        if let alert = self.alerts[alertId] {
+            await self.cancelScheduledDelivery(for: alert)
+        } else {
+            await self.scheduler.cancel(alertId: alertId)
+            await self.durableNotificationScheduler.cancelNotification(alertId: alertId)
+        }
+        self.alerts.removeValue(forKey: alertId)
+        await self.persistAlerts()
+    }
+
     func createAlert(
         for event: CalendarEvent,
         stage: AlertStage,
@@ -339,6 +354,10 @@ private extension AlertEngine {
         return self.dateProvider().timeIntervalSince(alert.scheduledFireTime) <= Self.localStage2TriggerFreshnessWindow
     }
 
+    func isRelevantForAlertContext(_ alert: ScheduledAlert) -> Bool {
+        self.dateProvider() < alert.eventEndTime
+    }
+
     func checkPresentationModeSuppression() async -> AlertDowngradeReason? {
         guard let provider = presentationModeProvider else { return nil }
         return await provider()
@@ -387,45 +406,35 @@ private extension AlertEngine {
     }
 }
 
-// MARK: - Alert Suppression Providers
-
 public extension AlertEngine {
-    /// Sets back-to-back context provider. Stage 1 alerts are downgraded to banners when user is in a meeting.
     func setBackToBackContextProvider(
         _ provider: @escaping @Sendable (ScheduledAlert) async -> BackToBackAlertContext
     ) {
         self.backToBackContextProvider = provider
     }
 
-    /// Clears the back-to-back context provider.
     func clearBackToBackContextProvider() {
         self.backToBackContextProvider = nil
     }
 
-    /// Sets presentation mode provider for suppression during screen share/DND.
     func setPresentationModeProvider(
         _ provider: @escaping @Sendable () async -> AlertDowngradeReason?
     ) {
         self.presentationModeProvider = provider
     }
 
-    /// Clears the presentation mode provider.
     func clearPresentationModeProvider() {
         self.presentationModeProvider = nil
     }
 }
 
-// MARK: - Missed Alert Handling
-
 public extension AlertEngine {
     private static let missedAlertGracePeriod: TimeInterval = 5 * 60 // 5 minutes
 
-    /// Checks for alerts that missed during sleep. Returns categorized results for handling.
     func checkForMissedAlerts() async -> [MissedAlertResult] {
         let now = self.dateProvider()
         var results: [MissedAlertResult] = []
 
-        // Find alerts that were due in the past (missed during sleep)
         let missedAlerts = self.alerts.values.filter { $0.scheduledFireTime < now }
 
         for alert in missedAlerts {
@@ -434,23 +443,19 @@ public extension AlertEngine {
             var shouldKeepAlert = false
 
             if timeSinceMeetingStart < 0 {
-                // Meeting hasn't started yet - fire alert now
                 result = .fireNow(alert)
                 await self.delivery.deliver(alert: alert)
                 shouldKeepAlert = true
             } else if timeSinceMeetingStart < Self.missedAlertGracePeriod {
-                // Meeting started within grace period - still worth alerting
                 result = .meetingJustStarted(alert)
                 await self.delivery.deliver(alert: alert)
                 shouldKeepAlert = true
             } else {
-                // Meeting too old - just clean up
                 result = .tooOld(alert)
             }
 
             results.append(result)
 
-            // Cancel any pending schedule for the missed alert.
             await self.cancelScheduledDelivery(for: alert)
 
             if shouldKeepAlert {
