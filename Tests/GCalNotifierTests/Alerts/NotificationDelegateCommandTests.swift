@@ -4,6 +4,23 @@ import UserNotifications
 
 @Suite("NotificationDelegate Command Tests")
 struct NotificationDelegateCommandTests {
+    @Test("Stage 1 default activation emits show context command")
+    func stage1DefaultActivationEmitsShowContextCommand() async {
+        let recorder = AlertCommandRecorder()
+        let delegate = NotificationDelegate()
+        await delegate.setAlertCommandHandler { command in
+            await recorder.record(command)
+        }
+
+        await delegate.testHandleResponse(
+            alertId: "alert-stage1",
+            categoryIdentifier: NotificationScheduler.stage1AlertCategory,
+            actionIdentifier: UNNotificationDefaultActionIdentifier
+        )
+
+        #expect(await recorder.commands == [.showContext(alertId: "alert-stage1")])
+    }
+
     @Test("Stage 2 Join action emits join command")
     func stage2JoinActionEmitsJoinCommand() async {
         let recorder = AlertCommandRecorder()

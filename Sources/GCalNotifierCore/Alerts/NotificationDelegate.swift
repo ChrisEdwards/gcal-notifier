@@ -9,7 +9,8 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 
     static func presentationOptions(forCategoryIdentifier identifier: String) -> UNNotificationPresentationOptions {
-        let shouldShowBanner = identifier == NotificationScheduler.backToBackAlertCategory ||
+        let shouldShowBanner = identifier == NotificationScheduler.stage1AlertCategory ||
+            identifier == NotificationScheduler.backToBackAlertCategory ||
             identifier == NotificationScheduler.stage2AlertCategory
         return shouldShowBanner ? [.banner, .list] : []
     }
@@ -78,6 +79,11 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         categoryIdentifier: String,
         actionIdentifier: String
     ) async {
+        if categoryIdentifier == NotificationScheduler.stage1AlertCategory {
+            await self.fireCommandInternal(.showContext(alertId: alertId))
+            return
+        }
+
         if categoryIdentifier == NotificationScheduler.stage2AlertCategory {
             await self.fireCommandInternal(Self.command(alertId: alertId, actionIdentifier: actionIdentifier))
             return

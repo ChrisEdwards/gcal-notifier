@@ -4,6 +4,27 @@ import Testing
 
 @Suite("NotificationScheduler Durable Notification Tests")
 struct NotificationSchedulerDurableTests {
+    @Test("Durable Stage 1 notification uses gentle snapshot content")
+    func durableStage1NotificationUsesGentleSnapshotContent() async throws {
+        let mockCenter = MockNotificationCenter()
+        let delegate = NotificationDelegate()
+        let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
+
+        let fireDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let alert = try makeStage1NotificationTestAlert(fireDate: fireDate)
+
+        await scheduler.scheduleNotification(for: alert)
+
+        let request = try #require(mockCenter.pendingRequests.first)
+        #expect(request.identifier == alert.id)
+        #expect(request.title == alert.notificationPayload.title)
+        #expect(request.body.contains(alert.eventTitle))
+        #expect(request.categoryIdentifier == AlertNotificationPayload.stage1CategoryIdentifier)
+        #expect(request.soundIsNil)
+        #expect(!request.isTimeSensitive)
+        #expect(request.userInfo["notificationUrgency"] == AlertNotificationUrgency.active.rawValue)
+    }
+
     @Test("Durable Stage 2 notification uses alert snapshot content")
     func durableStage2NotificationUsesAlertSnapshotContent() async throws {
         let mockCenter = MockNotificationCenter()
@@ -70,6 +91,50 @@ struct NotificationSchedulerDurableTests {
         #expect(request.triggerSecond == 30)
         #expect(request.triggerRepeats == false)
     }
+
+    @Test("Stage 1 notification urgency is lower than Stage 2")
+    func stage1NotificationUrgencyIsLowerThanStage2() async throws {
+        let mockCenter = MockNotificationCenter()
+        let delegate = NotificationDelegate()
+        let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
+
+        let fireDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let stage1 = try makeStage1NotificationTestAlert(fireDate: fireDate)
+        let stage2 = try makeStage2NotificationTestAlert(fireDate: fireDate.addingTimeInterval(60))
+
+        await scheduler.scheduleNotification(for: stage1)
+        await scheduler.scheduleNotification(for: stage2)
+
+        let requests = Dictionary(uniqueKeysWithValues: mockCenter.pendingRequests.map { ($0.identifier, $0) })
+        #expect(requests[stage1.id]?.userInfo["notificationUrgency"] == AlertNotificationUrgency.active.rawValue)
+        #expect(requests[stage2.id]?.userInfo["notificationUrgency"] == AlertNotificationUrgency.timeSensitive.rawValue)
+        #expect(requests[stage1.id]?.soundIsNil == true)
+        #expect(requests[stage2.id]?.soundIsNil == false)
+    }
+}
+
+private func makeStage1NotificationTestAlert(fireDate: Date) throws -> ScheduledAlert {
+    let eventStart = fireDate.addingTimeInterval(600)
+    let eventEnd = eventStart.addingTimeInterval(1800)
+    let joinURL = try #require(URL(string: "https://meet.google.com/stage-one"))
+    let calendarURL = try #require(URL(string: "https://calendar.google.com/event?eid=stage-one"))
+
+    return ScheduledAlert(
+        id: "calendar-1::event-1-stage1",
+        eventId: "calendar-1::event-1",
+        stage: .stage1,
+        scheduledFireTime: fireDate,
+        eventTitle: "Early Warning Review",
+        eventStartTime: eventStart,
+        eventEndTime: eventEnd,
+        joinURL: joinURL,
+        calendarURL: calendarURL,
+        notificationPayload: AlertNotificationPayload.make(
+            eventTitle: "Early Warning Review",
+            eventStartTime: eventStart,
+            stage: .stage1
+        )
+    )
 }
 
 private func makeStage2NotificationTestAlert(fireDate: Date) throws -> ScheduledAlert {

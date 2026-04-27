@@ -95,7 +95,8 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
     /// Category identifier for meeting alerts.
     public static let meetingAlertCategory = AlertNotificationPayload.modalTimingCategoryIdentifier
 
-    /// Category identifier for visible urgent stage 2 alerts.
+    /// Category identifiers for visible OS fallback alerts.
+    public static let stage1AlertCategory = AlertNotificationPayload.stage1CategoryIdentifier
     public static let stage2AlertCategory = AlertNotificationPayload.stage2CategoryIdentifier
 
     public static let stage2JoinActionIdentifier = "STAGE2_JOIN"
@@ -285,6 +286,13 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
             options: [.hiddenPreviewsShowTitle]
         )
 
+        let stage1Category = UNNotificationCategory(
+            identifier: Self.stage1AlertCategory,
+            actions: [],
+            intentIdentifiers: [],
+            options: [.hiddenPreviewsShowTitle]
+        )
+
         let joinAction = UNNotificationAction(
             identifier: Self.stage2JoinActionIdentifier,
             title: "Join",
@@ -314,7 +322,7 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
             options: []
         )
 
-        self.center.setNotificationCategories([meetingCategory, stage2Category, backToBackCategory])
+        self.center.setNotificationCategories([meetingCategory, stage1Category, stage2Category, backToBackCategory])
     }
 
     private func fireAlert(alertId: String) async {

@@ -28,6 +28,30 @@ struct AlertEngineCommandTests {
         await expectAlertCleanedUp(context)
     }
 
+    @Test("Stage 1 Join acknowledges only Stage 1")
+    func stage1JoinAcknowledgesOnlyStage1() async throws {
+        let context = try makeStageCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        let result = await context.engine.handleAlertCommand(.join(alertId: context.stage1AlertId))
+
+        expectCommandCompleted(result, alertId: context.stage1AlertId)
+        await expectOnlyStage1Completed(context)
+    }
+
+    @Test("Stage 1 Dismiss acknowledges only Stage 1")
+    func stage1DismissAcknowledgesOnlyStage1() async throws {
+        let context = try makeStageCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        let result = await context.engine.handleAlertCommand(.dismiss(alertId: context.stage1AlertId))
+
+        expectCommandCompleted(result, alertId: context.stage1AlertId)
+        await expectOnlyStage1Completed(context)
+    }
+
     @Test("Snooze command updates alert state and replaces Stage 2 effects")
     func snoozeCommandUpdatesAlertStateAndReplacesStage2Effects() async throws {
         let context = try makeCommandContext()
@@ -108,6 +132,17 @@ private struct CommandContext {
     let alertId: String
 }
 
+private struct StageCommandContext {
+    let fileURL: URL
+    let settings: SettingsStore
+    let scheduler: MockAlertScheduler
+    let durableScheduler: MockDurableAlertNotificationScheduler
+    let engine: AlertEngine
+    let event: CalendarEvent
+    let stage1AlertId: String
+    let stage2AlertId: String
+}
+
 private func makeCommandContext() throws -> CommandContext {
     let fileURL = makeAlertTestTempFileURL()
     let store = ScheduledAlertsStore(fileURL: fileURL)
@@ -137,6 +172,34 @@ private func makeCommandContext() throws -> CommandContext {
         event: event,
         now: now,
         alertId: event.alertIdentifier(for: .stage2)
+    )
+}
+
+private func makeStageCommandContext() throws -> StageCommandContext {
+    let fileURL = makeAlertTestTempFileURL()
+    let scheduler = MockAlertScheduler()
+    let durableScheduler = MockDurableAlertNotificationScheduler()
+    let delivery = MockAlertDelivery()
+    let settings = try makeAlertTestSettings(stage1Minutes: 10, stage2Minutes: 2)
+    let now = Date(timeIntervalSince1970: 1_800_700_000)
+    let event = makeAlertTestEvent(id: "event-1", startTime: now.addingTimeInterval(30 * 60))
+    let engine = AlertEngine(
+        alertsStore: ScheduledAlertsStore(fileURL: fileURL),
+        scheduler: scheduler,
+        delivery: delivery,
+        durableNotificationScheduler: durableScheduler,
+        dateProvider: { now }
+    )
+
+    return StageCommandContext(
+        fileURL: fileURL,
+        settings: settings,
+        scheduler: scheduler,
+        durableScheduler: durableScheduler,
+        engine: engine,
+        event: event,
+        stage1AlertId: event.alertIdentifier(for: .stage1),
+        stage2AlertId: event.alertIdentifier(for: .stage2)
     )
 }
 
@@ -192,4 +255,19 @@ private func expectAlertSnoozed(_ context: CommandContext, expectedFireTime: Dat
     #expect(cancelledNotifications.contains(context.alertId))
     #expect(scheduledAlerts.last?.fireDate == expectedFireTime)
     #expect(scheduledNotifications.last?.scheduledFireTime == expectedFireTime)
+}
+
+private func expectOnlyStage1Completed(_ context: StageCommandContext) async {
+    let remaining = await context.engine.scheduledAlerts
+    let acknowledged = await context.engine.acknowledgedAlerts
+    let cancelledAlerts = await context.scheduler.cancelledAlertIds
+    let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    #expect(!remaining.contains { $0.id == context.stage1AlertId })
+    #expect(remaining.contains { $0.id == context.stage2AlertId })
+    #expect(acknowledged.contains(context.stage1AlertId))
+    #expect(!acknowledged.contains(context.stage2AlertId))
+    #expect(cancelledAlerts.contains(context.stage1AlertId))
+    #expect(cancelledNotifications.contains(context.stage1AlertId))
+    #expect(!cancelledAlerts.contains(context.stage2AlertId))
+    #expect(!cancelledNotifications.contains(context.stage2AlertId))
 }

@@ -46,6 +46,7 @@ public enum AlertNotificationUrgency: String, Codable, Sendable, Equatable {
 /// User-facing notification content and OS delivery metadata captured at schedule time.
 public struct AlertNotificationPayload: Codable, Sendable, Equatable {
     public static let modalTimingCategoryIdentifier = "MEETING_ALERT"
+    public static let stage1CategoryIdentifier = "STAGE1_MEETING_ALERT"
     public static let stage2CategoryIdentifier = "STAGE2_MEETING_ALERT"
 
     public let title: String
@@ -80,7 +81,7 @@ public struct AlertNotificationPayload: Codable, Sendable, Equatable {
             return AlertNotificationPayload(
                 title: "Upcoming meeting",
                 body: body,
-                categoryIdentifier: Self.modalTimingCategoryIdentifier,
+                categoryIdentifier: Self.stage1CategoryIdentifier,
                 soundBehavior: .none,
                 urgency: .active
             )

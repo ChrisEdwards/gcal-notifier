@@ -55,7 +55,6 @@ public actor AlertEngine {
 
         for event in events {
             guard filter.shouldAlert(for: event) else { continue }
-
             await self.scheduleStageAlert(
                 for: event,
                 stage: .stage1,
@@ -129,7 +128,6 @@ public actor AlertEngine {
         for eventId in orphanedEventIds {
             await self.cancelAlerts(for: eventId)
         }
-
         let stage1Enabled = settings.alertStage1Minutes > 0
         let stage2Enabled = settings.alertStage2Minutes > 0
         let existingAlerts = Array(self.alerts.values)
@@ -137,12 +135,10 @@ public actor AlertEngine {
 
         for alert in existingAlerts {
             guard let event = eventsById[alert.eventId] else { continue }
-
             if !filter.shouldAlert(for: event) {
                 alertIdsToCancel.append(alert.id)
                 continue
             }
-
             switch alert.stage {
             case .stage1 where !stage1Enabled:
                 alertIdsToCancel.append(alert.id)
@@ -326,13 +322,11 @@ private extension AlertEngine {
     }
 
     func scheduleDurableNotificationIfNeeded(for alert: ScheduledAlert) async {
-        guard alert.stage == .stage2 else { return }
         await self.durableNotificationScheduler.scheduleNotification(for: alert)
     }
 
     func cancelScheduledDelivery(for alert: ScheduledAlert) async {
         await self.scheduler.cancel(alertId: alert.id)
-        guard alert.stage == .stage2 else { return }
         await self.durableNotificationScheduler.cancelNotification(alertId: alert.id)
     }
 
@@ -357,8 +351,14 @@ private extension AlertEngine {
     }
 
     func isFreshLocalTrigger(_ alert: ScheduledAlert) -> Bool {
-        guard alert.stage == .stage2 else { return true }
-        return self.dateProvider().timeIntervalSince(alert.scheduledFireTime) <= Self.localStage2TriggerFreshnessWindow
+        switch alert.stage {
+        case .stage1:
+            let stage2Id = "\(alert.eventId)-\(AlertStage.stage2.rawValue)"
+            return self.dateProvider() < (self.alerts[stage2Id]?.scheduledFireTime ?? alert.eventStartTime)
+        case .stage2:
+            return self.dateProvider().timeIntervalSince(alert.scheduledFireTime) <= Self
+                .localStage2TriggerFreshnessWindow
+        }
     }
 
     func isRelevantForAlertContext(_ alert: ScheduledAlert) -> Bool {

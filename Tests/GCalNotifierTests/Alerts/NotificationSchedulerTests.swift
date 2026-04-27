@@ -3,9 +3,6 @@ import Testing
 @preconcurrency import UserNotifications
 @testable import GCalNotifierCore
 
-// MARK: - Captured Request Data
-
-/// Sendable struct to capture notification request data for testing.
 struct CapturedNotificationRequest: Sendable {
     let identifier: String
     let title: String
@@ -60,9 +57,6 @@ struct CapturedNotificationRequest: Sendable {
     }
 }
 
-// MARK: - Mock Notification Center
-
-/// Thread-safe storage for mock notification center state.
 final class MockNotificationCenterStorage: @unchecked Sendable {
     private let lock = NSLock()
     private var _pendingRequests: [CapturedNotificationRequest] = []
@@ -138,7 +132,6 @@ final class MockNotificationCenterStorage: @unchecked Sendable {
     }
 }
 
-/// Mock notification center for testing without real system notifications.
 final class MockNotificationCenter: NotificationCenterProtocol, @unchecked Sendable {
     let storage = MockNotificationCenterStorage()
 
@@ -183,9 +176,7 @@ final class MockNotificationCenter: NotificationCenterProtocol, @unchecked Senda
         self.storage.addRemovedIdentifiers(identifiers)
     }
 
-    func removeAllDeliveredNotifications() {
-        // No-op for mock
-    }
+    func removeAllDeliveredNotifications() {}
 
     func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {
         let identifiers = categories.map(\.identifier)
@@ -208,8 +199,6 @@ final class MockNotificationCenter: NotificationCenterProtocol, @unchecked Senda
         self.storage.authorizationStatus = status
     }
 }
-
-// MARK: - NotificationScheduler Tests
 
 @Suite("NotificationScheduler Tests")
 struct NotificationSchedulerTests {
@@ -332,8 +321,9 @@ struct NotificationSchedulerTests {
         _ = await NotificationScheduler(center: mockCenter, delegate: delegate)
 
         let categoryIds = mockCenter.registeredCategoryIdentifiers
-        #expect(categoryIds.count == 3)
+        #expect(categoryIds.count == 4)
         #expect(categoryIds.contains(NotificationScheduler.meetingAlertCategory))
+        #expect(categoryIds.contains(NotificationScheduler.stage1AlertCategory))
         #expect(categoryIds.contains(NotificationScheduler.stage2AlertCategory))
         #expect(categoryIds.contains(NotificationScheduler.backToBackAlertCategory))
     }
@@ -359,8 +349,6 @@ struct NotificationSchedulerTests {
         #expect(status == .denied)
     }
 }
-
-// MARK: - NotificationDelegate Tests
 
 @Suite("NotificationDelegate Tests")
 struct NotificationDelegateTests {
@@ -429,7 +417,6 @@ struct NotificationDelegateTests {
     @Test("Firing unknown alert ID does nothing")
     func firingUnknownAlertDoesNothing() async {
         let delegate = NotificationDelegate()
-        // Should not throw or crash
         await delegate.testFireHandler(alertId: "nonexistent-alert")
     }
 
@@ -450,6 +437,15 @@ struct NotificationDelegateTests {
         #expect(options.isEmpty)
     }
 
+    @Test("Stage 1 category allows banner presentation")
+    func stage1CategoryAllowsBannerPresentation() {
+        let options = NotificationDelegate.presentationOptions(
+            forCategoryIdentifier: NotificationScheduler.stage1AlertCategory
+        )
+        #expect(options.contains(.banner))
+        #expect(options.contains(.list))
+    }
+
     @Test("Stage 2 category allows banner presentation")
     func stage2CategoryAllowsBannerPresentation() {
         let options = NotificationDelegate.presentationOptions(
@@ -459,8 +455,6 @@ struct NotificationDelegateTests {
         #expect(options.contains(.list))
     }
 }
-
-// MARK: - NotificationAuthorizationStatus Tests
 
 @Suite("NotificationAuthorizationStatus Tests")
 struct NotificationAuthorizationStatusTests {
@@ -474,7 +468,6 @@ struct NotificationAuthorizationStatusTests {
     }
 }
 
-/// Thread-safe box for use in async closures.
 final class SendableBox<T>: @unchecked Sendable {
     private let lock = NSLock()
     private var _value: T
