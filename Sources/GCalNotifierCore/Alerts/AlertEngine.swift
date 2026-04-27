@@ -19,6 +19,7 @@ public actor AlertEngine {
 
     /// Grace period for late scheduling when sync happens just after a stage boundary.
     private static let lateStageGracePeriod: TimeInterval = 2 * 60
+    private static let localStage2TriggerFreshnessWindow: TimeInterval = 5 * 60
 
     /// Currently scheduled alerts.
     public var scheduledAlerts: [ScheduledAlert] {
@@ -115,17 +116,6 @@ public actor AlertEngine {
         await self.persistAlerts()
     }
 
-    /// Snoozes an alert by the specified duration.
-    ///
-    /// Reschedules the alert to fire after the snooze duration. Tracks snooze count
-    /// and preserves the original fire time for context.
-    ///
-    /// - Parameters:
-    ///   - alertId: The ID of the alert to snooze.
-    ///   - duration: The snooze duration in seconds (e.g., 60 for 1 minute).
-    /// - Throws: `AlertError.alertNotFound` if the alert doesn't exist.
-    /// - Throws: `AlertError.meetingAlreadyStarted` if the meeting has already started.
-    /// - Throws: `AlertError.snoozePastMeetingStart` if the snooze would fire after the meeting starts.
     public func snooze(alertId: String, duration: TimeInterval) async throws {
         guard let existingAlert = self.alerts[alertId] else {
             throw AlertError.alertNotFound(alertId: alertId)
@@ -133,26 +123,20 @@ public actor AlertEngine {
 
         let now = self.dateProvider()
 
-        // Cannot snooze if meeting has already started
         if existingAlert.eventStartTime <= now {
             throw AlertError.meetingAlreadyStarted
         }
 
-        // Calculate new fire time
         let newFireTime = now.addingTimeInterval(duration)
 
-        // Cannot snooze past meeting start
         if newFireTime >= existingAlert.eventStartTime {
             throw AlertError.snoozePastMeetingStart
         }
 
-        // Create snoozed alert with updated fire time
         let snoozedAlert = existingAlert.snoozed(until: newFireTime)
 
-        // Cancel the old alert timer
         await self.cancelScheduledDelivery(for: existingAlert)
 
-        // Schedule the new snoozed alert
         self.alerts[alertId] = snoozedAlert
         await self.scheduleTimer(for: snoozedAlert)
         await self.scheduleDurableNotificationIfNeeded(for: snoozedAlert)
@@ -166,13 +150,11 @@ public actor AlertEngine {
         let eventsById = Dictionary(uniqueKeysWithValues: newEvents.map { ($0.qualifiedId, $0) })
         let filter = EventFilter(settings: settings)
 
-        // Cancel alerts for events that no longer exist
         let orphanedEventIds = Set(alerts.values.map(\.eventId)).subtracting(newEventIds)
         for eventId in orphanedEventIds {
             await self.cancelAlerts(for: eventId)
         }
 
-        // Cancel alerts that are no longer allowed by current settings.
         let stage1Enabled = settings.alertStage1Minutes > 0
         let stage2Enabled = settings.alertStage2Minutes > 0
         let existingAlerts = Array(self.alerts.values)
@@ -202,8 +184,6 @@ public actor AlertEngine {
             }
         }
 
-        // Clear acknowledgments for events that no longer exist.
-        // Alert IDs are formatted as "{eventId}-{stage}", so extract eventId safely.
         self.acknowledgedAlertStartTimes = self.acknowledgedAlertStartTimes.filter { alertId, startTime in
             guard let eventId = self.eventId(from: alertId),
                   let event = eventsById[eventId]
@@ -211,12 +191,9 @@ public actor AlertEngine {
             return event.startTime == startTime
         }
 
-        // Schedule alerts for new/updated events
         await self.scheduleAlerts(for: newEvents, settings: settings)
     }
 
-    /// Recovers scheduled alerts after app relaunch.
-    /// Re-schedules timers for persisted alerts that are still in the future.
     public func reconcileOnRelaunch() async throws {
         guard !self.isInitialized else { return }
         self.isInitialized = true
@@ -317,7 +294,12 @@ private extension AlertEngine {
             alertId: alert.id,
             fireDate: alert.scheduledFireTime
         ) { [weak self] in
-            Task { await self?.handleAlertFired(alertId: alert.id) }
+            Task {
+                await self?.handleAlertFired(
+                    alertId: alert.id,
+                    expectedFireTime: alert.scheduledFireTime
+                )
+            }
         }
     }
 
@@ -332,8 +314,10 @@ private extension AlertEngine {
         await self.durableNotificationScheduler.cancelNotification(alertId: alert.id)
     }
 
-    func handleAlertFired(alertId: String) async {
+    func handleAlertFired(alertId: String, expectedFireTime: Date) async {
         guard let alert = alerts[alertId] else { return }
+        guard alert.scheduledFireTime == expectedFireTime else { return }
+        guard self.isFreshLocalTrigger(alert) else { return }
 
         if let reason = await self.checkPresentationModeSuppression() {
             await self.delivery.deliverDowngraded(alert: alert, reason: reason)
@@ -348,6 +332,11 @@ private extension AlertEngine {
         }
 
         await self.persistAlerts()
+    }
+
+    func isFreshLocalTrigger(_ alert: ScheduledAlert) -> Bool {
+        guard alert.stage == .stage2 else { return true }
+        return self.dateProvider().timeIntervalSince(alert.scheduledFireTime) <= Self.localStage2TriggerFreshnessWindow
     }
 
     func checkPresentationModeSuppression() async -> AlertDowngradeReason? {

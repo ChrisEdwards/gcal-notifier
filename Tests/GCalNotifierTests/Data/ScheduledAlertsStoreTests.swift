@@ -352,6 +352,33 @@ struct ScheduledAlertModelTests {
         #expect(alert.id == "unique-id-123")
     }
 
+    @Test("Fallback event preserves alert snapshot")
+    func fallbackEventPreservesAlertSnapshot() throws {
+        let joinURL = try #require(URL(string: "https://meet.google.com/fallback"))
+        let calendarURL = try #require(URL(string: "https://calendar.google.com/event?eid=fallback"))
+        let startTime = Date(timeIntervalSince1970: 1_800_000_000)
+        let endTime = startTime.addingTimeInterval(1800)
+        let alert = makeTestAlert(
+            id: "cal-1::event-1-stage2",
+            eventId: "cal-1::event-1",
+            stage: .stage2,
+            eventTitle: "Snapshot Modal",
+            eventStartTime: startTime,
+            eventEndTime: endTime,
+            joinURL: joinURL,
+            calendarURL: calendarURL
+        )
+
+        let event = alert.fallbackCalendarEvent
+        #expect(event.qualifiedId == alert.eventId)
+        #expect(event.alertIdentifier(for: .stage2) == alert.id)
+        #expect(event.title == alert.eventTitle)
+        #expect(event.startTime == startTime)
+        #expect(event.endTime == endTime)
+        #expect(event.primaryMeetingURL == joinURL)
+        #expect(event.htmlLink == calendarURL)
+    }
+
     @Test("Alerts with same data are equal")
     func alertEquality() {
         let time = Date(timeIntervalSince1970: 1_700_000_000)

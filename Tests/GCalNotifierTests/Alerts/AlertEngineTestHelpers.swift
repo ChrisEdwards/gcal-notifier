@@ -4,14 +4,22 @@ import Testing
 
 // MARK: - Mock Dependencies
 
+struct ScheduledAlertHandler: Sendable {
+    let alertId: String
+    let fireDate: Date
+    let handler: @Sendable () -> Void
+}
+
 /// Mock scheduler that tracks scheduled and cancelled alerts.
 actor MockAlertScheduler: AlertScheduler {
     private(set) var scheduledAlerts: [(alertId: String, fireDate: Date)] = []
     private(set) var cancelledAlertIds: [String] = []
     private var handlers: [String: @Sendable () -> Void] = [:]
+    private var scheduledHandlers: [ScheduledAlertHandler] = []
 
     func schedule(alertId: String, fireDate: Date, handler: @escaping @Sendable () -> Void) {
         self.scheduledAlerts.append((alertId, fireDate))
+        self.scheduledHandlers.append(ScheduledAlertHandler(alertId: alertId, fireDate: fireDate, handler: handler))
         self.handlers[alertId] = handler
     }
 
@@ -31,10 +39,15 @@ actor MockAlertScheduler: AlertScheduler {
         self.handlers[alertId]?()
     }
 
+    func firstHandler(alertId: String) -> (@Sendable () -> Void)? {
+        self.scheduledHandlers.first { $0.alertId == alertId }?.handler
+    }
+
     func reset() {
         self.scheduledAlerts = []
         self.cancelledAlertIds = []
         self.handlers.removeAll()
+        self.scheduledHandlers.removeAll()
     }
 }
 

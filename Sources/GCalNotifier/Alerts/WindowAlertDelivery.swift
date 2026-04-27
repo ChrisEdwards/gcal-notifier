@@ -34,9 +34,7 @@ public final class WindowAlertDelivery: AlertDelivery {
     }
 
     public nonisolated func deliver(alert: ScheduledAlert) async {
-        await MainActor.run {
-            self.showAlert(alert, downgraded: false)
-        }
+        await self.showAlert(alert)
     }
 
     public nonisolated func deliverDowngraded(alert: ScheduledAlert, reason: AlertDowngradeReason) async {
@@ -44,51 +42,32 @@ public final class WindowAlertDelivery: AlertDelivery {
     }
 
     @MainActor
-    private func showAlert(_ alert: ScheduledAlert, downgraded _: Bool, reason _: AlertDowngradeReason? = nil) {
-        // Load the event from cache to get full details
-        Task {
-            let event = await self.loadEvent(for: alert)
-            guard let event else {
-                Logger.alerts.error(
-                    "Alert delivery dropped: event not found for \(alert.id) (stage=\(alert.stage.rawValue))"
-                )
-                return
-            }
+    private func showAlert(_ alert: ScheduledAlert) async {
+        let event = await self.displayEvent(for: alert)
+        let isSnoozed = alert.snoozeCount > 0
+        let snoozeContext = isSnoozed ? "Snoozed \(alert.snoozeCount) time(s)" : nil
 
-            let isSnoozed = alert.snoozeCount > 0
-            let snoozeContext = isSnoozed ? "Snoozed \(alert.snoozeCount) time(s)" : nil
-
-            if let engine = alertEngine {
-                self.windowController.setAlertEngine(engine)
-            }
-            self.windowController.showAlert(
-                for: event,
-                stage: alert.stage,
-                snoozed: isSnoozed,
-                snoozeContext: snoozeContext
-            )
-            Logger.alerts.info(
-                "Alert window shown for \(alert.id) (stage=\(alert.stage.rawValue), snoozed=\(isSnoozed))"
-            )
-
-            // Play sound
-            let soundName = alert.stage == .stage1 ? self.settings.stage1Sound : self.settings.stage2Sound
-            SoundPlayer.shared.play(named: soundName, customPath: self.settings.customSoundPath)
-
-            // Notify that alert was delivered (for UI updates like status bar)
-            self.onAlertDelivered?()
+        if let engine = alertEngine {
+            self.windowController.setAlertEngine(engine)
         }
+        self.windowController.showAlert(
+            for: event,
+            stage: alert.stage,
+            snoozed: isSnoozed,
+            snoozeContext: snoozeContext
+        )
+        Logger.alerts.info(
+            "Alert window shown for \(alert.id) (stage=\(alert.stage.rawValue), snoozed=\(isSnoozed))"
+        )
+
+        let soundName = alert.stage == .stage1 ? self.settings.stage1Sound : self.settings.stage2Sound
+        SoundPlayer.shared.play(named: soundName, customPath: self.settings.customSoundPath)
+        self.onAlertDelivered?()
     }
 
     @MainActor
     private func handleDowngradedAlert(_ alert: ScheduledAlert, reason: AlertDowngradeReason) async {
-        guard let event = await self.loadEvent(for: alert) else {
-            Logger.alerts.error(
-                "Downgraded alert dropped: event not found for \(alert.id) (reason=\(String(describing: reason)))"
-            )
-            return
-        }
-
+        let event = await self.displayEvent(for: alert)
         let title = self.bannerTitle(for: event)
         await self.scheduler.showBannerNotification(
             title: title,
@@ -114,6 +93,17 @@ public final class WindowAlertDelivery: AlertDelivery {
         }
         let minutes = Int(timeUntil / 60)
         return "Meeting in \(minutes) minute\(minutes == 1 ? "" : "s")"
+    }
+
+    private func displayEvent(for alert: ScheduledAlert) async -> CalendarEvent {
+        if let event = await self.loadEvent(for: alert) {
+            return event
+        }
+
+        Logger.alerts.warning(
+            "Using alert snapshot fallback for \(alert.id) (stage=\(alert.stage.rawValue))"
+        )
+        return alert.fallbackCalendarEvent
     }
 
     private func loadEvent(for alert: ScheduledAlert) async -> CalendarEvent? {

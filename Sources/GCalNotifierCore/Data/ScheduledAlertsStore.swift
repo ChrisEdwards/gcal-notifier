@@ -242,6 +242,27 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
 // MARK: - ScheduledAlert Helpers
 
 public extension ScheduledAlert {
+    /// Calendar event synthesized from the persisted snapshot for cache-independent modal display.
+    var fallbackCalendarEvent: CalendarEvent {
+        let eventIdentity = self.eventIdentity
+        let meetingLinks = self.joinURL.map { [MeetingLink(url: $0)] } ?? []
+
+        return CalendarEvent(
+            id: eventIdentity.eventId,
+            calendarId: eventIdentity.calendarId,
+            title: self.eventTitle,
+            startTime: self.eventStartTime,
+            endTime: self.eventEndTime,
+            isAllDay: false,
+            location: nil,
+            meetingLinks: meetingLinks,
+            isOrganizer: false,
+            attendeeCount: 0,
+            responseStatus: .accepted,
+            htmlLink: self.calendarURL
+        )
+    }
+
     /// Creates a new alert with updated snooze information.
     func snoozed(until newFireTime: Date) -> ScheduledAlert {
         ScheduledAlert(
@@ -263,6 +284,17 @@ public extension ScheduledAlert {
     /// Whether this alert has been snoozed at least once.
     var wasSnoozed: Bool {
         self.snoozeCount > 0
+    }
+
+    private var eventIdentity: (calendarId: String, eventId: String) {
+        guard let separatorRange = self.eventId.range(of: "::") else {
+            return ("", self.eventId)
+        }
+
+        return (
+            String(self.eventId[..<separatorRange.lowerBound]),
+            String(self.eventId[separatorRange.upperBound...])
+        )
     }
 }
 
