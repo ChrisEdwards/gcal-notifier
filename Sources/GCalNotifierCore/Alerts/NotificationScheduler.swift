@@ -99,7 +99,9 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
     public static let stage2AlertCategory = AlertNotificationPayload.stage2CategoryIdentifier
 
     public static let stage2JoinActionIdentifier = "STAGE2_JOIN"
+    public static let stage2SnoozeActionIdentifier = "STAGE2_SNOOZE_1M"
     public static let stage2DismissActionIdentifier = "STAGE2_DISMISS"
+    public static let stage2SnoozeDuration: TimeInterval = 60
 
     // MARK: - Dependencies
 
@@ -288,6 +290,11 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
             title: "Join",
             options: [.foreground]
         )
+        let snoozeAction = UNNotificationAction(
+            identifier: Self.stage2SnoozeActionIdentifier,
+            title: "Snooze 1m",
+            options: []
+        )
         let dismissAction = UNNotificationAction(
             identifier: Self.stage2DismissActionIdentifier,
             title: "Dismiss",
@@ -295,7 +302,7 @@ public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationSche
         )
         let stage2Category = UNNotificationCategory(
             identifier: Self.stage2AlertCategory,
-            actions: [joinAction, dismissAction],
+            actions: [joinAction, snoozeAction, dismissAction],
             intentIdentifiers: [],
             options: [.hiddenPreviewsShowTitle]
         )

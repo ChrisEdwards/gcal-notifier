@@ -364,7 +364,7 @@ extension AlertWindowController {
         self.completeCurrentAlert(.join(alertId: alertId)) { _ in }
     }
 
-    private func snoozeMeeting(duration: TimeInterval) {
+    func snoozeMeeting(duration: TimeInterval) {
         guard let event = currentEvent,
               let stage = currentStage,
               let engine = alertEngine
@@ -376,12 +376,12 @@ extension AlertWindowController {
         let alertId = event.alertIdentifier(for: stage)
 
         Task { @MainActor in
-            do {
-                try await engine.snooze(alertId: alertId, duration: duration)
+            let result = await engine.handleAlertCommand(.snooze(alertId: alertId, duration: duration))
+            if case .snoozed = result {
                 Logger.alerts.info("Snoozed alert: \(alertId) for \(Int(duration / 60))m")
                 self.isSnoozing = true
                 close() // Close but don't acknowledge
-            } catch {
+            } else if case let .rejected(_, error) = result {
                 Logger.alerts.error("Failed to snooze: \(error.localizedDescription)")
             }
         }

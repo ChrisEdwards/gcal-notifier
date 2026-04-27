@@ -43,6 +43,21 @@ struct AlertWindowControllerCommandTests {
         #expect(openedURLs.isEmpty)
         try await expectModalCommandCleanedUp(context)
     }
+
+    @MainActor
+    @Test("Modal Stage 2 Snooze updates state and replaces alert effects")
+    func modalStage2SnoozeUpdatesStateAndReplacesAlertEffects() async throws {
+        let context = try makeModalCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        context.controller.setAlertEngine(context.engine)
+        context.controller.showAlert(for: context.event, stage: .stage2)
+
+        context.controller.snoozeMeeting(duration: 60)
+
+        try await expectModalAlertSnoozed(context, expectedFireTime: context.now.addingTimeInterval(60))
+    }
 }
 
 private struct ModalCommandContext {
@@ -53,6 +68,7 @@ private struct ModalCommandContext {
     let engine: AlertEngine
     let event: CalendarEvent
     let controller: AlertWindowController
+    let now: Date
     let alertId: String
     let joinURL: URL
 }
@@ -77,8 +93,9 @@ private func makeModalCommandContext() throws -> ModalCommandContext {
         scheduler: scheduler,
         delivery: delivery,
         durableNotificationScheduler: durableScheduler,
-        dateProvider: { eventStart.addingTimeInterval(-10 * 60) }
+        dateProvider: { eventStart.addingTimeInterval(-5 * 60) }
     )
+    let now = eventStart.addingTimeInterval(-5 * 60)
 
     return ModalCommandContext(
         fileURL: fileURL,
@@ -88,6 +105,7 @@ private func makeModalCommandContext() throws -> ModalCommandContext {
         engine: engine,
         event: event,
         controller: AlertWindowController(window: NSWindow()),
+        now: now,
         alertId: event.alertIdentifier(for: .stage2),
         joinURL: joinURL
     )
@@ -107,6 +125,27 @@ private func expectModalCommandCleanedUp(_ context: ModalCommandContext) async t
     let cancelledAlerts = await context.scheduler.cancelledAlertIds
     let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
     #expect(!remaining.contains { $0.id == context.alertId })
+    #expect(cancelledAlerts.contains(context.alertId))
+    #expect(cancelledNotifications.contains(context.alertId))
+}
+
+@MainActor
+private func expectModalAlertSnoozed(_ context: ModalCommandContext, expectedFireTime: Date) async throws {
+    for _ in 0 ..< 50 {
+        let alerts = await context.engine.scheduledAlerts
+        if alerts.first(where: { $0.id == context.alertId })?.scheduledFireTime == expectedFireTime {
+            break
+        }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+
+    let alerts = await context.engine.scheduledAlerts
+    let alert = try #require(alerts.first { $0.id == context.alertId })
+    let cancelledAlerts = await context.scheduler.cancelledAlertIds
+    let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    #expect(alert.scheduledFireTime == expectedFireTime)
+    #expect(alert.snoozeCount == 1)
+    #expect(alert.originalFireTime == context.now)
     #expect(cancelledAlerts.contains(context.alertId))
     #expect(cancelledNotifications.contains(context.alertId))
 }

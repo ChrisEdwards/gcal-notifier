@@ -38,8 +38,8 @@ struct NotificationDelegateCommandTests {
         #expect(await recorder.commands == [.dismiss(alertId: "alert-2")])
     }
 
-    @Test("Stage 2 default activation emits show context command")
-    func stage2DefaultActivationEmitsShowContextCommand() async {
+    @Test("Stage 2 Snooze action emits snooze command")
+    func stage2SnoozeActionEmitsSnoozeCommand() async {
         let recorder = AlertCommandRecorder()
         let delegate = NotificationDelegate()
         await delegate.setAlertCommandHandler { command in
@@ -49,10 +49,29 @@ struct NotificationDelegateCommandTests {
         await delegate.testHandleResponse(
             alertId: "alert-3",
             categoryIdentifier: NotificationScheduler.stage2AlertCategory,
+            actionIdentifier: NotificationScheduler.stage2SnoozeActionIdentifier
+        )
+
+        #expect(await recorder.commands == [
+            .snooze(alertId: "alert-3", duration: NotificationScheduler.stage2SnoozeDuration),
+        ])
+    }
+
+    @Test("Stage 2 default activation emits show context command")
+    func stage2DefaultActivationEmitsShowContextCommand() async {
+        let recorder = AlertCommandRecorder()
+        let delegate = NotificationDelegate()
+        await delegate.setAlertCommandHandler { command in
+            await recorder.record(command)
+        }
+
+        await delegate.testHandleResponse(
+            alertId: "alert-4",
+            categoryIdentifier: NotificationScheduler.stage2AlertCategory,
             actionIdentifier: UNNotificationDefaultActionIdentifier
         )
 
-        #expect(await recorder.commands == [.showContext(alertId: "alert-3")])
+        #expect(await recorder.commands == [.showContext(alertId: "alert-4")])
     }
 }
 

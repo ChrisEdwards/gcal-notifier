@@ -11,10 +11,7 @@ public actor AlertEngine {
     private var acknowledgedAlertStartTimes: [String: Date] = [:]
     private var isInitialized = false
 
-    /// Provider for back-to-back context. Set this to enable back-to-back detection during alerts.
     private var backToBackContextProvider: (@Sendable (ScheduledAlert) async -> BackToBackAlertContext)?
-
-    /// Provider for presentation mode suppression. Set this to enable screen share/DND detection during alerts.
     private var presentationModeProvider: (@Sendable () async -> AlertDowngradeReason?)?
 
     private static let lateStageGracePeriod: TimeInterval = 2 * 60
@@ -94,36 +91,33 @@ public actor AlertEngine {
         switch command {
         case let .join(alertId), let .dismiss(alertId):
             await self.completeAlertCommand(alertId: alertId)
+        case let .snooze(alertId, duration):
+            await self.snoozeAlertCommand(alertId: alertId, duration: duration)
         case let .showContext(alertId):
             await self.showAlertContext(alertId: alertId)
         }
     }
 
-    public func snooze(alertId: String, duration: TimeInterval) async throws {
+    @discardableResult
+    public func snooze(alertId: String, duration: TimeInterval) async throws -> ScheduledAlert {
         guard let existingAlert = self.alerts[alertId] else {
             throw AlertError.alertNotFound(alertId: alertId)
         }
-
         let now = self.dateProvider()
-
         if existingAlert.eventStartTime <= now {
             throw AlertError.meetingAlreadyStarted
         }
-
         let newFireTime = now.addingTimeInterval(duration)
-
         if newFireTime >= existingAlert.eventStartTime {
             throw AlertError.snoozePastMeetingStart
         }
-
         let snoozedAlert = existingAlert.snoozed(until: newFireTime)
-
         await self.cancelScheduledDelivery(for: existingAlert)
-
         self.alerts[alertId] = snoozedAlert
         await self.scheduleTimer(for: snoozedAlert)
         await self.scheduleDurableNotificationIfNeeded(for: snoozedAlert)
         await self.persistAlerts()
+        return snoozedAlert
     }
 
     public func reconcile(newEvents: [CalendarEvent], settings: SettingsStore) async {
@@ -217,6 +211,19 @@ private extension AlertEngine {
         await self.delivery.deliver(alert: alert)
         await self.persistAlerts()
         return .presented(alert)
+    }
+
+    func snoozeAlertCommand(alertId: String, duration: TimeInterval) async -> AlertCommandResult {
+        do {
+            let alert = try await self.snooze(alertId: alertId, duration: duration)
+            return .snoozed(alert)
+        } catch let AlertError.alertNotFound(missingAlertId) {
+            return .missingAlert(alertId: missingAlertId)
+        } catch let error as AlertError {
+            return .rejected(alertId: alertId, error: error)
+        } catch {
+            return .rejected(alertId: alertId, error: .alertNotFound(alertId: alertId))
+        }
     }
 
     func cancelAlert(alertId: String) async {

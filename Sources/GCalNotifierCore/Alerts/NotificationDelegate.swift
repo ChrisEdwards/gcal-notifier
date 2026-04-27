@@ -92,6 +92,8 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         switch actionIdentifier {
         case NotificationScheduler.stage2JoinActionIdentifier:
             .join(alertId: alertId)
+        case NotificationScheduler.stage2SnoozeActionIdentifier:
+            .snooze(alertId: alertId, duration: NotificationScheduler.stage2SnoozeDuration)
         case NotificationScheduler.stage2DismissActionIdentifier, UNNotificationDismissActionIdentifier:
             .dismiss(alertId: alertId)
         default:

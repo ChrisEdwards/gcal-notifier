@@ -44,6 +44,23 @@ struct WindowDeliveryCommandTests {
     }
 
     @MainActor
+    @Test("Notification Stage 2 Snooze updates state and replaces alert effects")
+    func notificationStage2SnoozeUpdatesStateAndReplacesAlertEffects() async throws {
+        let context = try await makeNotificationCommandContext { _ in }
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        await context.delegate.testHandleResponse(
+            alertId: context.alertId,
+            categoryIdentifier: NotificationScheduler.stage2AlertCategory,
+            actionIdentifier: NotificationScheduler.stage2SnoozeActionIdentifier
+        )
+
+        let expectedFireTime = context.now.addingTimeInterval(NotificationScheduler.stage2SnoozeDuration)
+        try await expectNotificationAlertSnoozed(context, expectedFireTime: expectedFireTime)
+    }
+
+    @MainActor
     @Test("Notification default activation shows context without acknowledging")
     func notificationDefaultActivationShowsContextWithoutAcknowledging() async throws {
         let context = try await makeNotificationCommandContext { _ in }
@@ -72,6 +89,7 @@ private struct NotificationCommandContext {
     let windowController: AlertWindowController
     let engine: AlertEngine
     let event: CalendarEvent
+    let now: Date
     let alertId: String
     let joinURL: URL
 }
@@ -96,12 +114,13 @@ private func makeNotificationCommandContext(
     )
     let joinURL = try #require(URL(string: "https://meet.google.com/notification-command"))
     let event = makeNotificationCommandEvent(joinURL: joinURL)
+    let now = event.startTime.addingTimeInterval(-5 * 60)
     let engine = AlertEngine(
         alertsStore: ScheduledAlertsStore(fileURL: fileURL.appendingPathExtension("alerts")),
         scheduler: scheduler,
         delivery: delivery,
         durableNotificationScheduler: notificationScheduler,
-        dateProvider: { event.startTime.addingTimeInterval(-10 * 60) }
+        dateProvider: { now }
     )
     await delivery.setAlertEngine(engine)
 
@@ -114,6 +133,7 @@ private func makeNotificationCommandContext(
         windowController: windowController,
         engine: engine,
         event: event,
+        now: now,
         alertId: event.alertIdentifier(for: .stage2),
         joinURL: joinURL
     )
@@ -134,4 +154,23 @@ private func expectNotificationCommandCleanedUp(_ context: NotificationCommandCo
     #expect(!remaining.contains { $0.id == context.alertId })
     #expect(cancelledAlerts.contains(context.alertId))
     #expect(context.center.removedIdentifiers.contains(context.alertId))
+}
+
+@MainActor
+private func expectNotificationAlertSnoozed(
+    _ context: NotificationCommandContext,
+    expectedFireTime: Date
+) async throws {
+    let alerts = await context.engine.scheduledAlerts
+    let alert = try #require(alerts.first { $0.id == context.alertId })
+    let scheduledAlerts = await context.scheduler.scheduledAlerts
+    let request = try #require(context.center.pendingRequests.first { $0.identifier == context.alertId })
+    let expectedFireTimeText = ISO8601DateFormatter().string(from: expectedFireTime)
+    #expect(alert.scheduledFireTime == expectedFireTime)
+    #expect(alert.snoozeCount == 1)
+    #expect(alert.originalFireTime == context.now)
+    #expect(scheduledAlerts.last?.fireDate == expectedFireTime)
+    #expect(context.center.pendingRequests.count == 1)
+    #expect(context.center.removedIdentifiers.contains(context.alertId))
+    #expect(request.userInfo["scheduledFireTime"] == expectedFireTimeText)
 }

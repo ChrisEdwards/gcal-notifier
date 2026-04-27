@@ -13,12 +13,14 @@ public protocol AlertDelivery: Sendable {
 public enum AlertCommand: Sendable, Equatable {
     case join(alertId: String)
     case dismiss(alertId: String)
+    case snooze(alertId: String, duration: TimeInterval)
     case showContext(alertId: String)
 
     public var alertId: String {
         switch self {
         case let .join(alertId),
              let .dismiss(alertId),
+             let .snooze(alertId, _),
              let .showContext(alertId):
             alertId
         }
@@ -28,8 +30,10 @@ public enum AlertCommand: Sendable, Equatable {
 /// Result of applying an alert command to shared alert state.
 public enum AlertCommandResult: Sendable, Equatable {
     case completed(ScheduledAlert)
+    case snoozed(ScheduledAlert)
     case presented(ScheduledAlert)
     case missingAlert(alertId: String)
+    case rejected(alertId: String, error: AlertError)
     case noOp(alertId: String)
 }
 
