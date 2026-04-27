@@ -91,6 +91,13 @@ actor MockDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
         self.cancelledNotificationIds.append(contentsOf: self.scheduledNotifications.map(\.id))
         self.scheduledNotifications.removeAll()
     }
+
+    func reset() {
+        self.scheduledNotifications = []
+        self.scheduledSnoozeDurations = [:]
+        self.cancelledNotificationIds = []
+        self.cancelAllCallCount = 0
+    }
 }
 
 // MARK: - Test Helpers

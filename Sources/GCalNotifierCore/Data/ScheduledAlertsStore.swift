@@ -282,6 +282,23 @@ public extension ScheduledAlert {
         )
     }
 
+    func replacingSnapshot(with alert: ScheduledAlert) -> ScheduledAlert {
+        ScheduledAlert(
+            id: self.id,
+            eventId: self.eventId,
+            stage: self.stage,
+            scheduledFireTime: self.scheduledFireTime,
+            snoozeCount: self.snoozeCount,
+            originalFireTime: self.originalFireTime,
+            eventTitle: alert.eventTitle,
+            eventStartTime: alert.eventStartTime,
+            eventEndTime: alert.eventEndTime,
+            joinURL: alert.joinURL,
+            calendarURL: alert.calendarURL,
+            notificationPayload: alert.notificationPayload
+        )
+    }
+
     /// Whether this alert has been snoozed at least once.
     var wasSnoozed: Bool {
         self.snoozeCount > 0

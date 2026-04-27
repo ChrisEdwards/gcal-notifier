@@ -4,9 +4,9 @@ public actor AlertEngine {
     private let alertsStore: ScheduledAlertsStore
     private let scheduler: AlertScheduler
     private let durableNotificationScheduler: any DurableAlertNotificationScheduler
-    private let delivery: AlertDelivery
-    private let dateProvider: @Sendable () -> Date
-    private var alerts: [String: ScheduledAlert] = [:]
+    let delivery: AlertDelivery
+    let dateProvider: @Sendable () -> Date
+    var alerts: [String: ScheduledAlert] = [:]
     private var acknowledgedAlertStartTimes: [String: Date] = [:]
     private var isInitialized = false
     private var backToBackContextProvider: (@Sendable (ScheduledAlert) async -> BackToBackAlertContext)?
@@ -182,8 +182,8 @@ public actor AlertEngine {
     }
 }
 
-private extension AlertEngine {
-    func completeAlertCommand(alertId: String) async -> AlertCommandResult {
+extension AlertEngine {
+    private func completeAlertCommand(alertId: String) async -> AlertCommandResult {
         guard let alert = self.alerts[alertId] else {
             return .missingAlert(alertId: alertId)
         }
@@ -192,7 +192,7 @@ private extension AlertEngine {
         return .completed(alert)
     }
 
-    func showAlertContext(alertId: String) async -> AlertCommandResult {
+    private func showAlertContext(alertId: String) async -> AlertCommandResult {
         guard let alert = self.alerts[alertId] else {
             return .missingAlert(alertId: alertId)
         }
@@ -204,7 +204,7 @@ private extension AlertEngine {
         return .presented(alert)
     }
 
-    func snoozeAlertCommand(alertId: String, duration: TimeInterval) async -> AlertCommandResult {
+    private func snoozeAlertCommand(alertId: String, duration: TimeInterval) async -> AlertCommandResult {
         do {
             let alert = try await self.snooze(alertId: alertId, duration: duration)
             return .snoozed(alert)
@@ -217,7 +217,7 @@ private extension AlertEngine {
         }
     }
 
-    func cancelAlert(alertId: String) async {
+    private func cancelAlert(alertId: String) async {
         if let alert = self.alerts[alertId] {
             await self.cancelScheduledDelivery(for: alert)
         } else {
@@ -228,7 +228,7 @@ private extension AlertEngine {
         await self.persistAlerts()
     }
 
-    func createAlert(
+    private func createAlert(
         for event: CalendarEvent,
         stage: AlertStage,
         fireTime: Date
@@ -253,9 +253,9 @@ private extension AlertEngine {
         )
     }
 
-    func scheduleAlert(_ alert: ScheduledAlert) async {
+    private func scheduleAlert(_ alert: ScheduledAlert) async {
         if let existing = alerts[alert.id] {
-            if existing.scheduledFireTime == alert.scheduledFireTime {
+            if existing == alert {
                 return
             }
             await self.cancelScheduledDelivery(for: existing)
@@ -265,7 +265,7 @@ private extension AlertEngine {
         await self.scheduleDurableNotificationIfNeeded(for: alert)
     }
 
-    func scheduleStageAlert(
+    private func scheduleStageAlert(
         for event: CalendarEvent,
         stage: AlertStage,
         minutesBefore: Int,
@@ -274,28 +274,66 @@ private extension AlertEngine {
         guard minutesBefore > 0 else { return }
         let alertId = event.alertIdentifier(for: stage)
         guard !self.isAcknowledged(alertId: alertId, eventStartTime: event.startTime) else { return }
-        if let existing = self.alerts[alertId], existing.eventStartTime == event.startTime {
-            if existing.wasSnoozed {
-                return
-            }
-            if existing.scheduledFireTime <= now {
-                return
-            }
-        }
-        let stageFire = event.startTime.addingTimeInterval(-Double(minutesBefore * 60))
-        if stageFire > now {
-            let alert = self.createAlert(for: event, stage: stage, fireTime: stageFire)
-            await self.scheduleAlert(alert)
+        if let existing = self.alerts[alertId], existing.eventStartTime == event.startTime,
+           existing.scheduledFireTime <= now
+        {
+            self.refreshPastAlert(existing, event: event)
             return
         }
-        guard event.startTime > now else { return }
-        let lateBy = now.timeIntervalSince(stageFire)
-        guard lateBy <= Self.lateStageGracePeriod else { return }
-        let alert = self.createAlert(for: event, stage: stage, fireTime: now)
+        if let existing = self.alerts[alertId],
+           existing.wasSnoozed,
+           let refreshedAlert = self.refreshedSnoozedAlert(existing, event: event, now: now)
+        {
+            await self.scheduleAlert(refreshedAlert)
+            return
+        }
+        guard let fireTime = self.desiredFireTime(for: event, minutesBefore: minutesBefore, now: now) else {
+            await self.cancelExistingAlertIfPresent(alertId: alertId)
+            return
+        }
+        let alert = self.createAlert(for: event, stage: stage, fireTime: fireTime)
         await self.scheduleAlert(alert)
     }
 
-    func scheduleTimer(for alert: ScheduledAlert) async {
+    private func desiredFireTime(for event: CalendarEvent, minutesBefore: Int, now: Date) -> Date? {
+        let stageFire = event.startTime.addingTimeInterval(-Double(minutesBefore * 60))
+        if stageFire > now { return stageFire }
+        guard event.startTime > now else { return nil }
+        let lateBy = now.timeIntervalSince(stageFire)
+        return lateBy <= Self.lateStageGracePeriod ? now : nil
+    }
+
+    private func refreshPastAlert(_ existing: ScheduledAlert, event: CalendarEvent) {
+        let refreshed = self.refreshedAlert(existing, event: event)
+        if refreshed != existing {
+            self.alerts[existing.id] = refreshed
+        }
+    }
+
+    private func refreshedSnoozedAlert(_ existing: ScheduledAlert, event: CalendarEvent, now: Date) -> ScheduledAlert? {
+        let refreshed = self.refreshedAlert(existing, event: event)
+        guard self.isValidPreservedSnooze(refreshed, now: now) else { return nil }
+        return refreshed
+    }
+
+    private func refreshedAlert(_ existing: ScheduledAlert, event: CalendarEvent) -> ScheduledAlert {
+        let snapshot = self.createAlert(for: event, stage: existing.stage, fireTime: existing.scheduledFireTime)
+        return existing.replacingSnapshot(with: snapshot)
+    }
+
+    private func isValidPreservedSnooze(_ alert: ScheduledAlert, now: Date) -> Bool {
+        guard alert.scheduledFireTime > now else { return false }
+        guard alert.scheduledFireTime < alert.eventStartTime else { return false }
+        guard let stage2FireTime = self.stage2FireTime(for: alert) else { return true }
+        return alert.scheduledFireTime < stage2FireTime
+    }
+
+    private func cancelExistingAlertIfPresent(alertId: String) async {
+        guard let alert = self.alerts.removeValue(forKey: alertId) else { return }
+        await self.cancelScheduledDelivery(for: alert)
+    }
+
+    private func scheduleTimer(for alert: ScheduledAlert) async {
         await self.scheduler.schedule(
             alertId: alert.id,
             fireDate: alert.scheduledFireTime
@@ -309,7 +347,7 @@ private extension AlertEngine {
         }
     }
 
-    func scheduleDurableNotificationIfNeeded(for alert: ScheduledAlert) async {
+    private func scheduleDurableNotificationIfNeeded(for alert: ScheduledAlert) async {
         await self.durableNotificationScheduler.scheduleNotification(
             for: alert,
             snoozeDurations: self.validSnoozeDurations(for: alert, now: alert.scheduledFireTime)
@@ -321,7 +359,7 @@ private extension AlertEngine {
         await self.durableNotificationScheduler.cancelNotification(alertId: alert.id)
     }
 
-    func handleAlertFired(alertId: String, expectedFireTime: Date) async {
+    private func handleAlertFired(alertId: String, expectedFireTime: Date) async {
         guard let alert = alerts[alertId] else { return }
         guard alert.scheduledFireTime == expectedFireTime else { return }
         guard self.isFreshLocalTrigger(alert) else { return }
@@ -339,7 +377,7 @@ private extension AlertEngine {
         await self.persistAlerts()
     }
 
-    func isFreshLocalTrigger(_ alert: ScheduledAlert) -> Bool {
+    private func isFreshLocalTrigger(_ alert: ScheduledAlert) -> Bool {
         switch alert.stage {
         case .stage1:
             self.dateProvider() < (self.stage2FireTime(for: alert) ?? alert.eventStartTime)
@@ -349,12 +387,12 @@ private extension AlertEngine {
         }
     }
 
-    func stage2FireTime(for alert: ScheduledAlert) -> Date? {
+    private func stage2FireTime(for alert: ScheduledAlert) -> Date? {
         guard alert.stage == .stage1 else { return nil }
         return self.alerts["\(alert.eventId)-\(AlertStage.stage2.rawValue)"]?.scheduledFireTime
     }
 
-    func validSnoozeDurations(for alert: ScheduledAlert, now: Date) -> [TimeInterval] {
+    private func validSnoozeDurations(for alert: ScheduledAlert, now: Date) -> [TimeInterval] {
         AlertSnoozePolicy.validDurations(
             for: alert.stage,
             now: now,
@@ -363,16 +401,16 @@ private extension AlertEngine {
         )
     }
 
-    func isRelevantForAlertContext(_ alert: ScheduledAlert) -> Bool {
+    private func isRelevantForAlertContext(_ alert: ScheduledAlert) -> Bool {
         self.dateProvider() < alert.eventEndTime
     }
 
-    func checkPresentationModeSuppression() async -> AlertDowngradeReason? {
+    private func checkPresentationModeSuppression() async -> AlertDowngradeReason? {
         guard let provider = presentationModeProvider else { return nil }
         return await provider()
     }
 
-    func shouldDowngradeAlert(_ alert: ScheduledAlert) async -> AlertDowngradeReason? {
+    private func shouldDowngradeAlert(_ alert: ScheduledAlert) async -> AlertDowngradeReason? {
         guard alert.stage == .stage1 else { return nil }
         guard let provider = backToBackContextProvider else { return nil }
         let context = await provider(alert)
@@ -390,7 +428,7 @@ private extension AlertEngine {
         }
     }
 
-    func eventId(from alertId: String) -> String? {
+    private func eventId(from alertId: String) -> String? {
         for stage in AlertStage.allCases {
             let suffix = "-\(stage.rawValue)"
             guard alertId.hasSuffix(suffix) else { continue }
@@ -399,7 +437,7 @@ private extension AlertEngine {
         return nil
     }
 
-    func isAcknowledged(alertId: String, eventStartTime: Date) -> Bool {
+    private func isAcknowledged(alertId: String, eventStartTime: Date) -> Bool {
         guard let acknowledgedStartTime = self.acknowledgedAlertStartTimes[alertId] else {
             return false
         }
@@ -430,59 +468,5 @@ public extension AlertEngine {
 
     func clearPresentationModeProvider() {
         self.presentationModeProvider = nil
-    }
-}
-
-public extension AlertEngine {
-    private static let missedAlertGracePeriod: TimeInterval = 5 * 60 // 5 minutes
-
-    func checkForMissedAlerts() async -> [MissedAlertResult] {
-        let now = self.dateProvider()
-        var results: [MissedAlertResult] = []
-        let missedAlerts = self.alerts.values.filter { $0.scheduledFireTime < now }
-        for alert in missedAlerts {
-            let timeSinceMeetingStart = now.timeIntervalSince(alert.eventStartTime)
-            let result: MissedAlertResult
-            var shouldKeepAlert = false
-            if timeSinceMeetingStart < 0 {
-                result = .fireNow(alert)
-                await self.delivery.deliver(alert: alert)
-                shouldKeepAlert = true
-            } else if timeSinceMeetingStart < Self.missedAlertGracePeriod {
-                result = .meetingJustStarted(alert)
-                await self.delivery.deliver(alert: alert)
-                shouldKeepAlert = true
-            } else {
-                result = .tooOld(alert)
-            }
-            results.append(result)
-            await self.cancelScheduledDelivery(for: alert)
-            if shouldKeepAlert {
-                self.alerts[alert.id] = self.updatedAlertForMissed(alert, now: now)
-            } else {
-                self.alerts.removeValue(forKey: alert.id)
-            }
-        }
-        if !results.isEmpty {
-            await self.persistAlerts()
-        }
-        return results
-    }
-
-    private func updatedAlertForMissed(_ alert: ScheduledAlert, now: Date) -> ScheduledAlert {
-        ScheduledAlert(
-            id: alert.id,
-            eventId: alert.eventId,
-            stage: alert.stage,
-            scheduledFireTime: now,
-            snoozeCount: alert.snoozeCount,
-            originalFireTime: alert.originalFireTime,
-            eventTitle: alert.eventTitle,
-            eventStartTime: alert.eventStartTime,
-            eventEndTime: alert.eventEndTime,
-            joinURL: alert.joinURL,
-            calendarURL: alert.calendarURL,
-            notificationPayload: alert.notificationPayload
-        )
     }
 }
