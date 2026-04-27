@@ -30,7 +30,11 @@ private func makeTestAlert(
     snoozeCount: Int = 0,
     originalFireTime: Date? = nil,
     eventTitle: String = "Test Meeting",
-    eventStartTime: Date = Date().addingTimeInterval(600)
+    eventStartTime: Date = Date().addingTimeInterval(600),
+    eventEndTime: Date? = nil,
+    joinURL: URL? = nil,
+    calendarURL: URL? = nil,
+    notificationPayload: AlertNotificationPayload? = nil
 ) -> ScheduledAlert {
     ScheduledAlert(
         id: id,
@@ -40,7 +44,39 @@ private func makeTestAlert(
         snoozeCount: snoozeCount,
         originalFireTime: originalFireTime,
         eventTitle: eventTitle,
-        eventStartTime: eventStartTime
+        eventStartTime: eventStartTime,
+        eventEndTime: eventEndTime,
+        joinURL: joinURL,
+        calendarURL: calendarURL,
+        notificationPayload: notificationPayload
+    )
+}
+
+private func makeFullPersistenceAlert() throws -> ScheduledAlert {
+    let startTime = Date(timeIntervalSince1970: 1_700_000_600)
+    let joinURL = try #require(URL(string: "https://meet.google.com/full-alert"))
+    let calendarURL = try #require(URL(string: "https://calendar.google.com/event?eid=full-alert"))
+    let notificationPayload = AlertNotificationPayload(
+        title: "Meeting starts soon",
+        body: "Important Meeting starts at 10:10 AM",
+        categoryIdentifier: AlertNotificationPayload.stage2CategoryIdentifier,
+        soundBehavior: .defaultSound,
+        urgency: .timeSensitive
+    )
+
+    return ScheduledAlert(
+        id: "full-alert",
+        eventId: "event-xyz",
+        stage: .stage2,
+        scheduledFireTime: Date(timeIntervalSince1970: 1_700_000_000),
+        snoozeCount: 3,
+        originalFireTime: Date(timeIntervalSince1970: 1_699_999_500),
+        eventTitle: "Important Meeting",
+        eventStartTime: startTime,
+        eventEndTime: Date(timeIntervalSince1970: 1_700_004_200),
+        joinURL: joinURL,
+        calendarURL: calendarURL,
+        notificationPayload: notificationPayload
     )
 }
 
@@ -121,6 +157,50 @@ struct ScheduledAlertsStoreSaveAndLoadTests {
         #expect(loadedAlert.scheduledFireTime == snoozedTime)
         #expect(loadedAlert.wasSnoozed)
     }
+
+    @Test("Stage 2 presentation snapshot persists")
+    func stage2PresentationSnapshotPersists() async throws {
+        let fileURL = makeTempFileURL()
+        defer { cleanupTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let fireTime = Date(timeIntervalSince1970: 1_800_000_000)
+        let startTime = fireTime.addingTimeInterval(120)
+        let endTime = startTime.addingTimeInterval(1800)
+        let joinURL = try #require(URL(string: "https://meet.google.com/abc-defg-hij"))
+        let calendarURL = try #require(URL(string: "https://calendar.google.com/event?eid=abc"))
+        let payload = AlertNotificationPayload.make(
+            eventTitle: "Durable Snapshot Meeting",
+            eventStartTime: startTime,
+            stage: .stage2
+        )
+
+        let alert = makeTestAlert(
+            id: "snapshot-alert",
+            eventId: "calendar-1::event-1",
+            stage: .stage2,
+            scheduledFireTime: fireTime,
+            eventTitle: "Durable Snapshot Meeting",
+            eventStartTime: startTime,
+            eventEndTime: endTime,
+            joinURL: joinURL,
+            calendarURL: calendarURL,
+            notificationPayload: payload
+        )
+
+        try await store.save([alert])
+        let loaded = try await store.load()
+        let loadedAlert = try #require(loaded.first)
+
+        #expect(loadedAlert.eventTitle == "Durable Snapshot Meeting")
+        #expect(loadedAlert.eventStartTime == startTime)
+        #expect(loadedAlert.eventEndTime == endTime)
+        #expect(loadedAlert.stage == .stage2)
+        #expect(loadedAlert.scheduledFireTime == fireTime)
+        #expect(loadedAlert.joinURL == joinURL)
+        #expect(loadedAlert.calendarURL == calendarURL)
+        #expect(loadedAlert.notificationPayload == payload)
+    }
 }
 
 // MARK: - Persistence Tests
@@ -170,20 +250,7 @@ struct ScheduledAlertsStorePersistenceTests {
         let fileURL = makeTempFileURL()
         defer { cleanupTempDir(fileURL) }
 
-        let fireTime = Date(timeIntervalSince1970: 1_700_000_000)
-        let originalTime = Date(timeIntervalSince1970: 1_699_999_500)
-        let startTime = Date(timeIntervalSince1970: 1_700_000_600)
-
-        let alert = ScheduledAlert(
-            id: "full-alert",
-            eventId: "event-xyz",
-            stage: .stage2,
-            scheduledFireTime: fireTime,
-            snoozeCount: 3,
-            originalFireTime: originalTime,
-            eventTitle: "Important Meeting",
-            eventStartTime: startTime
-        )
+        let alert = try makeFullPersistenceAlert()
 
         // Save with first instance
         do {
@@ -198,15 +265,7 @@ struct ScheduledAlertsStorePersistenceTests {
 
             #expect(loaded.count == 1)
             let loadedAlert = try #require(loaded.first)
-
-            #expect(loadedAlert.id == "full-alert")
-            #expect(loadedAlert.eventId == "event-xyz")
-            #expect(loadedAlert.stage == .stage2)
-            #expect(loadedAlert.scheduledFireTime == fireTime)
-            #expect(loadedAlert.snoozeCount == 3)
-            #expect(loadedAlert.originalFireTime == originalTime)
-            #expect(loadedAlert.eventTitle == "Important Meeting")
-            #expect(loadedAlert.eventStartTime == startTime)
+            #expect(loadedAlert == alert)
         }
     }
 }

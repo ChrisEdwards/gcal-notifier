@@ -8,19 +8,28 @@ import Testing
 /// Sendable struct to capture notification request data for testing.
 struct CapturedNotificationRequest: Sendable {
     let identifier: String
+    let title: String
+    let body: String
     let categoryIdentifier: String
     let soundIsNil: Bool
+    let isTimeSensitive: Bool
+    let userInfo: [String: String]
     let triggerYear: Int?
     let triggerMonth: Int?
     let triggerDay: Int?
     let triggerHour: Int?
     let triggerMinute: Int?
+    let triggerSecond: Int?
     let triggerRepeats: Bool?
 
     init(from request: UNNotificationRequest) {
         self.identifier = request.identifier
+        self.title = request.content.title
+        self.body = request.content.body
         self.categoryIdentifier = request.content.categoryIdentifier
         self.soundIsNil = request.content.sound == nil
+        self.isTimeSensitive = request.content.interruptionLevel == .timeSensitive
+        self.userInfo = Self.stringUserInfo(from: request.content.userInfo)
 
         if let trigger = request.trigger as? UNCalendarNotificationTrigger {
             self.triggerYear = trigger.dateComponents.year
@@ -28,6 +37,7 @@ struct CapturedNotificationRequest: Sendable {
             self.triggerDay = trigger.dateComponents.day
             self.triggerHour = trigger.dateComponents.hour
             self.triggerMinute = trigger.dateComponents.minute
+            self.triggerSecond = trigger.dateComponents.second
             self.triggerRepeats = trigger.repeats
         } else {
             self.triggerYear = nil
@@ -35,8 +45,18 @@ struct CapturedNotificationRequest: Sendable {
             self.triggerDay = nil
             self.triggerHour = nil
             self.triggerMinute = nil
+            self.triggerSecond = nil
             self.triggerRepeats = nil
         }
+    }
+
+    private static func stringUserInfo(from userInfo: [AnyHashable: Any]) -> [String: String] {
+        var values: [String: String] = [:]
+        for (key, value) in userInfo {
+            guard let key = key as? String else { continue }
+            values[key] = String(describing: value)
+        }
+        return values
     }
 }
 
@@ -312,8 +332,9 @@ struct NotificationSchedulerTests {
         _ = await NotificationScheduler(center: mockCenter, delegate: delegate)
 
         let categoryIds = mockCenter.registeredCategoryIdentifiers
-        #expect(categoryIds.count == 2)
+        #expect(categoryIds.count == 3)
         #expect(categoryIds.contains(NotificationScheduler.meetingAlertCategory))
+        #expect(categoryIds.contains(NotificationScheduler.stage2AlertCategory))
         #expect(categoryIds.contains(NotificationScheduler.backToBackAlertCategory))
     }
 
@@ -428,6 +449,15 @@ struct NotificationDelegateTests {
         )
         #expect(options.isEmpty)
     }
+
+    @Test("Stage 2 category allows banner presentation")
+    func stage2CategoryAllowsBannerPresentation() {
+        let options = NotificationDelegate.presentationOptions(
+            forCategoryIdentifier: NotificationScheduler.stage2AlertCategory
+        )
+        #expect(options.contains(.banner))
+        #expect(options.contains(.list))
+    }
 }
 
 // MARK: - NotificationAuthorizationStatus Tests
@@ -443,8 +473,6 @@ struct NotificationAuthorizationStatusTests {
         // Note: .ephemeral is not available on macOS
     }
 }
-
-// MARK: - Test Helpers
 
 /// Thread-safe box for use in async closures.
 final class SendableBox<T>: @unchecked Sendable {

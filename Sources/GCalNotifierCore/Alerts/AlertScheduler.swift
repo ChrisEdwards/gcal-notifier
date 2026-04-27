@@ -8,6 +8,24 @@ public protocol AlertScheduler: Sendable {
     func cancelAll() async
 }
 
+/// Protocol for durable OS notification delivery that can survive app process interruptions.
+public protocol DurableAlertNotificationScheduler: Sendable {
+    func scheduleNotification(for alert: ScheduledAlert) async
+    func cancelNotification(alertId: String) async
+    func cancelAllNotifications() async
+}
+
+/// No-op durable scheduler for tests and contexts without notification support.
+public struct NoOpDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
+    public init() {}
+
+    public func scheduleNotification(for _: ScheduledAlert) async {}
+
+    public func cancelNotification(alertId _: String) async {}
+
+    public func cancelAllNotifications() async {}
+}
+
 /// Default alert scheduler using DispatchSourceTimer.
 public actor DispatchAlertScheduler: AlertScheduler {
     private var timers: [String: DispatchSourceTimer] = [:]

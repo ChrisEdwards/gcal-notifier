@@ -1,16 +1,11 @@
 import Foundation
 
-/// Central alert scheduling and state management.
-/// Handles two-stage alerts with persistence and recovery support.
 public actor AlertEngine {
-    // MARK: - Dependencies
-
     private let alertsStore: ScheduledAlertsStore
     private let scheduler: AlertScheduler
+    private let durableNotificationScheduler: any DurableAlertNotificationScheduler
     private let delivery: AlertDelivery
     private let dateProvider: @Sendable () -> Date
-
-    // MARK: - State
 
     private var alerts: [String: ScheduledAlert] = [:]
     private var acknowledgedAlertStartTimes: [String: Date] = [:]
@@ -24,8 +19,6 @@ public actor AlertEngine {
 
     /// Grace period for late scheduling when sync happens just after a stage boundary.
     private static let lateStageGracePeriod: TimeInterval = 2 * 60
-
-    // MARK: - Public Access
 
     /// Currently scheduled alerts.
     public var scheduledAlerts: [ScheduledAlert] {
@@ -43,6 +36,7 @@ public actor AlertEngine {
     public init(alertsStore: ScheduledAlertsStore) async {
         self.alertsStore = alertsStore
         self.scheduler = DispatchAlertScheduler()
+        self.durableNotificationScheduler = NoOpDurableAlertNotificationScheduler()
         self.delivery = NoOpAlertDelivery()
         self.dateProvider = { Date() }
     }
@@ -52,10 +46,12 @@ public actor AlertEngine {
         alertsStore: ScheduledAlertsStore,
         scheduler: AlertScheduler,
         delivery: AlertDelivery,
+        durableNotificationScheduler: any DurableAlertNotificationScheduler = NoOpDurableAlertNotificationScheduler(),
         dateProvider: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.alertsStore = alertsStore
         self.scheduler = scheduler
+        self.durableNotificationScheduler = durableNotificationScheduler
         self.delivery = delivery
         self.dateProvider = dateProvider
     }
@@ -94,7 +90,7 @@ public actor AlertEngine {
     public func cancelAlerts(for eventId: String) async {
         let alertsToCancel = self.alerts.values.filter { $0.eventId == eventId }
         for alert in alertsToCancel {
-            await self.scheduler.cancel(alertId: alert.id)
+            await self.cancelScheduledDelivery(for: alert)
             self.alerts.removeValue(forKey: alert.id)
         }
         await self.persistAlerts()
@@ -109,7 +105,12 @@ public actor AlertEngine {
 
     /// Cancels a specific alert by ID.
     private func cancelAlert(alertId: String) async {
-        await self.scheduler.cancel(alertId: alertId)
+        if let alert = self.alerts[alertId] {
+            await self.cancelScheduledDelivery(for: alert)
+        } else {
+            await self.scheduler.cancel(alertId: alertId)
+            await self.durableNotificationScheduler.cancelNotification(alertId: alertId)
+        }
         self.alerts.removeValue(forKey: alertId)
         await self.persistAlerts()
     }
@@ -149,11 +150,12 @@ public actor AlertEngine {
         let snoozedAlert = existingAlert.snoozed(until: newFireTime)
 
         // Cancel the old alert timer
-        await self.scheduler.cancel(alertId: alertId)
+        await self.cancelScheduledDelivery(for: existingAlert)
 
         // Schedule the new snoozed alert
         self.alerts[alertId] = snoozedAlert
         await self.scheduleTimer(for: snoozedAlert)
+        await self.scheduleDurableNotificationIfNeeded(for: snoozedAlert)
         await self.persistAlerts()
     }
 
@@ -195,8 +197,9 @@ public actor AlertEngine {
         }
 
         for alertId in alertIdsToCancel {
-            await self.scheduler.cancel(alertId: alertId)
-            self.alerts.removeValue(forKey: alertId)
+            if let alert = self.alerts.removeValue(forKey: alertId) {
+                await self.cancelScheduledDelivery(for: alert)
+            }
         }
 
         // Clear acknowledgments for events that no longer exist.
@@ -225,16 +228,17 @@ public actor AlertEngine {
             for alert in persistedAlerts where alert.scheduledFireTime > now {
                 self.alerts[alert.id] = alert
                 await self.scheduleTimer(for: alert)
+                await self.scheduleDurableNotificationIfNeeded(for: alert)
             }
         } catch {
             self.isInitialized = false
             throw error
         }
     }
+}
 
-    // MARK: - Private Helpers
-
-    private func createAlert(
+private extension AlertEngine {
+    func createAlert(
         for event: CalendarEvent,
         stage: AlertStage,
         fireTime: Date
@@ -247,25 +251,32 @@ public actor AlertEngine {
             snoozeCount: 0,
             originalFireTime: nil,
             eventTitle: event.title,
-            eventStartTime: event.startTime
+            eventStartTime: event.startTime,
+            eventEndTime: event.endTime,
+            joinURL: event.primaryMeetingURL,
+            calendarURL: event.htmlLink,
+            notificationPayload: AlertNotificationPayload.make(
+                eventTitle: event.title,
+                eventStartTime: event.startTime,
+                stage: stage
+            )
         )
     }
 
-    private func scheduleAlert(_ alert: ScheduledAlert) async {
-        // Only schedule if not already scheduled or if this is a newer version
+    func scheduleAlert(_ alert: ScheduledAlert) async {
         if let existing = alerts[alert.id] {
             if existing.scheduledFireTime == alert.scheduledFireTime {
                 return
             }
-            // Cancel existing timer for this alert
-            await self.scheduler.cancel(alertId: alert.id)
+            await self.cancelScheduledDelivery(for: existing)
         }
 
         self.alerts[alert.id] = alert
         await self.scheduleTimer(for: alert)
+        await self.scheduleDurableNotificationIfNeeded(for: alert)
     }
 
-    private func scheduleStageAlert(
+    func scheduleStageAlert(
         for event: CalendarEvent,
         stage: AlertStage,
         minutesBefore: Int,
@@ -274,18 +285,14 @@ public actor AlertEngine {
         guard minutesBefore > 0 else { return }
 
         let alertId = event.alertIdentifier(for: stage)
-
-        // Skip if this specific alert was already dismissed for this event time
         guard !self.isAcknowledged(alertId: alertId, eventStartTime: event.startTime) else { return }
 
         if let existing = self.alerts[alertId], existing.eventStartTime == event.startTime {
             if existing.wasSnoozed {
-                // Preserve user snooze choice across sync/reconcile.
                 return
             }
 
             if existing.scheduledFireTime <= now {
-                // Avoid re-firing an alert that's already due or has fired for this same event time.
                 return
             }
         }
@@ -305,7 +312,7 @@ public actor AlertEngine {
         await self.scheduleAlert(alert)
     }
 
-    private func scheduleTimer(for alert: ScheduledAlert) async {
+    func scheduleTimer(for alert: ScheduledAlert) async {
         await self.scheduler.schedule(
             alertId: alert.id,
             fireDate: alert.scheduledFireTime
@@ -314,54 +321,45 @@ public actor AlertEngine {
         }
     }
 
-    private func handleAlertFired(alertId: String) async {
+    func scheduleDurableNotificationIfNeeded(for alert: ScheduledAlert) async {
+        guard alert.stage == .stage2 else { return }
+        await self.durableNotificationScheduler.scheduleNotification(for: alert)
+    }
+
+    func cancelScheduledDelivery(for alert: ScheduledAlert) async {
+        await self.scheduler.cancel(alertId: alert.id)
+        guard alert.stage == .stage2 else { return }
+        await self.durableNotificationScheduler.cancelNotification(alertId: alert.id)
+    }
+
+    func handleAlertFired(alertId: String) async {
         guard let alert = alerts[alertId] else { return }
-        // Note: We intentionally do NOT remove the alert here.
-        // The alert must remain in the dictionary so snooze() can find it.
-        // Removal happens when user acknowledges via acknowledgeAlert().
 
-        // Check suppression in order of priority:
-        // 1. Presentation mode (screen share, DND) - highest priority
-        // 2. Back-to-back meeting context
-
-        // Check for presentation mode suppression first
         if let reason = await self.checkPresentationModeSuppression() {
             await self.delivery.deliverDowngraded(alert: alert, reason: reason)
             await self.persistAlerts()
             return
         }
 
-        // Check for back-to-back context to potentially downgrade the alert
-        let downgradeReason = await self.shouldDowngradeAlert(alert)
-
-        if let reason = downgradeReason {
-            // Downgrade to notification banner instead of modal
+        if let reason = await self.shouldDowngradeAlert(alert) {
             await self.delivery.deliverDowngraded(alert: alert, reason: reason)
         } else {
-            // Normal alert delivery (modal)
             await self.delivery.deliver(alert: alert)
         }
 
         await self.persistAlerts()
     }
 
-    /// Checks if presentation mode suppression should apply (screen share, mirroring, DND).
-    private func checkPresentationModeSuppression() async -> AlertDowngradeReason? {
+    func checkPresentationModeSuppression() async -> AlertDowngradeReason? {
         guard let provider = presentationModeProvider else { return nil }
         return await provider()
     }
 
-    /// Checks for back-to-back downgrade (only for stage 1 alerts).
-    private func shouldDowngradeAlert(_ alert: ScheduledAlert) async -> AlertDowngradeReason? {
-        // Only downgrade stage 1 alerts
+    func shouldDowngradeAlert(_ alert: ScheduledAlert) async -> AlertDowngradeReason? {
         guard alert.stage == .stage1 else { return nil }
-
-        // Check if we have a back-to-back context provider
         guard let provider = backToBackContextProvider else { return nil }
 
         let context = await provider(alert)
-
-        // Downgrade if user is in a meeting and this is a back-to-back situation
         if context.isInMeeting, context.isBackToBackSituation {
             return .backToBackMeeting
         }
@@ -369,16 +367,14 @@ public actor AlertEngine {
         return nil
     }
 
-    private func persistAlerts() async {
+    func persistAlerts() async {
         do {
             try await self.alertsStore.save(Array(self.alerts.values))
         } catch {
-            // Log error but don't throw - alert delivery is more important than persistence
+            // Alert delivery is more important than persistence here.
         }
     }
-}
 
-private extension AlertEngine {
     func eventId(from alertId: String) -> String? {
         for stage in AlertStage.allCases {
             let suffix = "-\(stage.rawValue)"
@@ -466,7 +462,7 @@ public extension AlertEngine {
             results.append(result)
 
             // Cancel any pending schedule for the missed alert.
-            await self.scheduler.cancel(alertId: alert.id)
+            await self.cancelScheduledDelivery(for: alert)
 
             if shouldKeepAlert {
                 self.alerts[alert.id] = self.updatedAlertForMissed(alert, now: now)
@@ -491,7 +487,11 @@ public extension AlertEngine {
             snoozeCount: alert.snoozeCount,
             originalFireTime: alert.originalFireTime,
             eventTitle: alert.eventTitle,
-            eventStartTime: alert.eventStartTime
+            eventStartTime: alert.eventStartTime,
+            eventEndTime: alert.eventEndTime,
+            joinURL: alert.joinURL,
+            calendarURL: alert.calendarURL,
+            notificationPayload: alert.notificationPayload
         )
     }
 }

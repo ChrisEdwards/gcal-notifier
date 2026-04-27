@@ -89,11 +89,14 @@ public final class SystemNotificationCenter: NotificationCenterProtocol, @unchec
 
 /// Schedules alerts using UNUserNotificationCenter for reliable timing.
 /// Uses system notifications as timing mechanism (survives sleep/wake, DST).
-public actor NotificationScheduler: AlertScheduler {
+public actor NotificationScheduler: AlertScheduler, DurableAlertNotificationScheduler {
     // MARK: - Constants
 
     /// Category identifier for meeting alerts.
-    public static let meetingAlertCategory = "MEETING_ALERT"
+    public static let meetingAlertCategory = AlertNotificationPayload.modalTimingCategoryIdentifier
+
+    /// Category identifier for visible urgent stage 2 alerts.
+    public static let stage2AlertCategory = AlertNotificationPayload.stage2CategoryIdentifier
 
     // MARK: - Dependencies
 
@@ -176,6 +179,36 @@ public actor NotificationScheduler: AlertScheduler {
         await self.delegate.unregisterAll()
     }
 
+    // MARK: - DurableAlertNotificationScheduler Protocol
+
+    public func scheduleNotification(for alert: ScheduledAlert) async {
+        let content = Self.makeNotificationContent(for: alert)
+        let trigger = Self.makeCalendarTrigger(fireDate: alert.scheduledFireTime)
+        let request = UNNotificationRequest(
+            identifier: alert.id,
+            content: content,
+            trigger: trigger
+        )
+
+        do {
+            try await self.center.add(request)
+        } catch {
+            Logger.alerts.error(
+                "Failed to schedule durable notification for alert \(alert.id): \(error.localizedDescription)"
+            )
+        }
+    }
+
+    public func cancelNotification(alertId: String) async {
+        self.center.removePendingNotificationRequests(withIdentifiers: [alertId])
+        self.center.removeDeliveredNotifications(withIdentifiers: [alertId])
+    }
+
+    public func cancelAllNotifications() async {
+        self.center.removeAllPendingNotificationRequests()
+        self.center.removeAllDeliveredNotifications()
+    }
+
     // MARK: - Permission Management
 
     /// Requests notification authorization from the user.
@@ -245,6 +278,15 @@ public actor NotificationScheduler: AlertScheduler {
             options: [.hiddenPreviewsShowTitle]
         )
 
+        // Define category for durable urgent alerts - these must be visible when
+        // macOS presents them outside the app's modal path.
+        let stage2Category = UNNotificationCategory(
+            identifier: Self.stage2AlertCategory,
+            actions: [],
+            intentIdentifiers: [],
+            options: [.hiddenPreviewsShowTitle]
+        )
+
         // Define category for back-to-back alerts - these show as banners
         let backToBackCategory = UNNotificationCategory(
             identifier: Self.backToBackAlertCategory,
@@ -253,13 +295,87 @@ public actor NotificationScheduler: AlertScheduler {
             options: []
         )
 
-        self.center.setNotificationCategories([meetingCategory, backToBackCategory])
+        self.center.setNotificationCategories([meetingCategory, stage2Category, backToBackCategory])
     }
 
     private func fireAlert(alertId: String) async {
         guard let handler = handlers[alertId] else { return }
         self.handlers.removeValue(forKey: alertId)
         handler()
+    }
+
+    private static func makeNotificationContent(for alert: ScheduledAlert) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = alert.notificationPayload.title
+        content.body = alert.notificationPayload.body
+        content.categoryIdentifier = alert.notificationPayload.categoryIdentifier
+        content.sound = Self.notificationSound(for: alert.notificationPayload.soundBehavior)
+        content.interruptionLevel = Self.interruptionLevel(for: alert.notificationPayload.urgency)
+        content.userInfo = Self.userInfo(for: alert)
+        return content
+    }
+
+    private static func makeCalendarTrigger(fireDate: Date) -> UNCalendarNotificationTrigger {
+        let dateComponents = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: fireDate
+        )
+        return UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+    }
+
+    private static func notificationSound(
+        for behavior: AlertNotificationSoundBehavior
+    ) -> UNNotificationSound? {
+        switch behavior {
+        case .none:
+            nil
+        case .defaultSound:
+            .default
+        }
+    }
+
+    private static func interruptionLevel(
+        for urgency: AlertNotificationUrgency
+    ) -> UNNotificationInterruptionLevel {
+        switch urgency {
+        case .passive:
+            .passive
+        case .active:
+            .active
+        case .timeSensitive:
+            .timeSensitive
+        }
+    }
+
+    private static func userInfo(for alert: ScheduledAlert) -> [String: String] {
+        var userInfo = [
+            "alertId": alert.id,
+            "eventId": alert.eventId,
+            "stage": alert.stage.rawValue,
+            "scheduledFireTime": Self.iso8601String(from: alert.scheduledFireTime),
+            "eventTitle": alert.eventTitle,
+            "eventStartTime": Self.iso8601String(from: alert.eventStartTime),
+            "eventEndTime": Self.iso8601String(from: alert.eventEndTime),
+            "notificationTitle": alert.notificationPayload.title,
+            "notificationBody": alert.notificationPayload.body,
+            "notificationCategory": alert.notificationPayload.categoryIdentifier,
+            "notificationSoundBehavior": alert.notificationPayload.soundBehavior.rawValue,
+            "notificationUrgency": alert.notificationPayload.urgency.rawValue,
+        ]
+
+        if let joinURL = alert.joinURL {
+            userInfo["joinURL"] = joinURL.absoluteString
+        }
+
+        if let calendarURL = alert.calendarURL {
+            userInfo["calendarURL"] = calendarURL.absoluteString
+        }
+
+        return userInfo
+    }
+
+    private static func iso8601String(from date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 }
 
@@ -278,7 +394,10 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 
     /// Returns the presentation options for a given notification category.
     static func presentationOptions(forCategoryIdentifier identifier: String) -> UNNotificationPresentationOptions {
-        if identifier == NotificationScheduler.backToBackAlertCategory {
+        let shouldShowBanner = identifier == NotificationScheduler.backToBackAlertCategory ||
+            identifier == NotificationScheduler.stage2AlertCategory
+
+        if shouldShowBanner {
             return [.banner, .list]
         }
         return []

@@ -36,6 +36,52 @@ struct AlertEngineScheduleAlertsTests {
         #expect(alertIds.contains(event.alertIdentifier(for: .stage2)))
     }
 
+    @Test("Schedule alerts persists Stage 2 snapshot and durable notification")
+    func scheduleAlertsPersistsStage2SnapshotAndDurableNotification() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let scheduler = MockAlertScheduler()
+        let durableScheduler = MockDurableAlertNotificationScheduler()
+        let delivery = MockAlertDelivery()
+
+        let baseTime = Date(timeIntervalSince1970: 1_800_000_000)
+        let eventStart = baseTime.addingTimeInterval(3600)
+        let joinURL = try #require(URL(string: "https://meet.google.com/vertical-slice"))
+        let calendarURL = try #require(URL(string: "https://calendar.google.com/event?eid=vertical-slice"))
+
+        let engine = AlertEngine(
+            alertsStore: store,
+            scheduler: scheduler,
+            delivery: delivery,
+            durableNotificationScheduler: durableScheduler,
+            dateProvider: { baseTime }
+        )
+
+        let event = makeAlertTestEvent(
+            id: "event-1",
+            title: "Durable Stage 2 Meeting",
+            startTime: eventStart,
+            meetingLinks: [MeetingLink(url: joinURL)],
+            htmlLink: calendarURL
+        )
+        let settings = try makeAlertTestSettings()
+
+        await engine.scheduleAlerts(for: [event], settings: settings)
+
+        let persistedStage2 = try #require(try await store.load().first { $0.stage == .stage2 })
+        expectStage2Snapshot(
+            persistedStage2,
+            event: event,
+            fireTime: eventStart.addingTimeInterval(-2 * 60),
+            joinURL: joinURL,
+            calendarURL: calendarURL
+        )
+        let durableNotifications = await durableScheduler.scheduledNotifications
+        expectDurableNotifications(durableNotifications, match: persistedStage2)
+    }
+
     @Test("Schedule alerts with stage 1 disabled only schedules stage 2")
     func scheduleAlertsStage1DisabledOnlySchedulesStage2() async throws {
         let fileURL = makeAlertTestTempFileURL()
@@ -337,4 +383,31 @@ struct AlertEngineAcknowledgeAlertTests {
         #expect(scheduled.count == 1)
         #expect(scheduled.first?.alertId.contains("stage2") == true)
     }
+}
+
+private func expectStage2Snapshot(
+    _ alert: ScheduledAlert,
+    event: CalendarEvent,
+    fireTime: Date,
+    joinURL: URL,
+    calendarURL: URL
+) {
+    #expect(alert.eventTitle == event.title)
+    #expect(alert.eventStartTime == event.startTime)
+    #expect(alert.eventEndTime == event.endTime)
+    #expect(alert.scheduledFireTime == fireTime)
+    #expect(alert.joinURL == joinURL)
+    #expect(alert.calendarURL == calendarURL)
+    #expect(alert.notificationPayload.categoryIdentifier == AlertNotificationPayload.stage2CategoryIdentifier)
+    #expect(alert.notificationPayload.soundBehavior == .defaultSound)
+    #expect(alert.notificationPayload.urgency == .timeSensitive)
+}
+
+private func expectDurableNotifications(
+    _ durableNotifications: [ScheduledAlert],
+    match persistedStage2: ScheduledAlert
+) {
+    #expect(durableNotifications.count == 1)
+    #expect(durableNotifications.first?.id == persistedStage2.id)
+    #expect(durableNotifications.first?.notificationPayload == persistedStage2.notificationPayload)
 }

@@ -57,6 +57,27 @@ actor MockAlertDelivery: AlertDelivery {
     }
 }
 
+/// Mock durable notification scheduler that tracks scheduled and cancelled OS notifications.
+actor MockDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
+    private(set) var scheduledNotifications: [ScheduledAlert] = []
+    private(set) var cancelledNotificationIds: [String] = []
+    private(set) var cancelAllCallCount = 0
+
+    func scheduleNotification(for alert: ScheduledAlert) {
+        self.scheduledNotifications.append(alert)
+    }
+
+    func cancelNotification(alertId: String) {
+        self.cancelledNotificationIds.append(alertId)
+    }
+
+    func cancelAllNotifications() {
+        self.cancelAllCallCount += 1
+        self.cancelledNotificationIds.append(contentsOf: self.scheduledNotifications.map(\.id))
+        self.scheduledNotifications.removeAll()
+    }
+}
+
 // MARK: - Test Helpers
 
 /// Creates a temporary file URL for test isolation.
@@ -88,7 +109,8 @@ func makeAlertTestEvent(
     meetingLinks: [MeetingLink]? = nil,
     isOrganizer: Bool = false,
     attendeeCount: Int = 5,
-    responseStatus: ResponseStatus = .accepted
+    responseStatus: ResponseStatus = .accepted,
+    htmlLink: URL? = nil
 ) -> CalendarEvent {
     let links: [MeetingLink] = if let provided = meetingLinks {
         provided
@@ -109,7 +131,8 @@ func makeAlertTestEvent(
         meetingLinks: links,
         isOrganizer: isOrganizer,
         attendeeCount: attendeeCount,
-        responseStatus: responseStatus
+        responseStatus: responseStatus,
+        htmlLink: htmlLink
     )
 }
 

@@ -28,6 +28,79 @@ public enum AlertStage: String, Codable, Sendable, Equatable, CaseIterable {
     }
 }
 
+// MARK: - AlertNotificationPayload
+
+/// Sound behavior for a scheduled OS notification.
+public enum AlertNotificationSoundBehavior: String, Codable, Sendable, Equatable {
+    case none
+    case defaultSound = "default"
+}
+
+/// Urgency metadata for a scheduled OS notification.
+public enum AlertNotificationUrgency: String, Codable, Sendable, Equatable {
+    case passive
+    case active
+    case timeSensitive
+}
+
+/// User-facing notification content and OS delivery metadata captured at schedule time.
+public struct AlertNotificationPayload: Codable, Sendable, Equatable {
+    public static let modalTimingCategoryIdentifier = "MEETING_ALERT"
+    public static let stage2CategoryIdentifier = "STAGE2_MEETING_ALERT"
+
+    public let title: String
+    public let body: String
+    public let categoryIdentifier: String
+    public let soundBehavior: AlertNotificationSoundBehavior
+    public let urgency: AlertNotificationUrgency
+
+    public init(
+        title: String,
+        body: String,
+        categoryIdentifier: String,
+        soundBehavior: AlertNotificationSoundBehavior,
+        urgency: AlertNotificationUrgency
+    ) {
+        self.title = title
+        self.body = body
+        self.categoryIdentifier = categoryIdentifier
+        self.soundBehavior = soundBehavior
+        self.urgency = urgency
+    }
+
+    public static func make(
+        eventTitle: String,
+        eventStartTime: Date,
+        stage: AlertStage
+    ) -> AlertNotificationPayload {
+        let body = Self.body(eventTitle: eventTitle, eventStartTime: eventStartTime)
+
+        switch stage {
+        case .stage1:
+            return AlertNotificationPayload(
+                title: "Upcoming meeting",
+                body: body,
+                categoryIdentifier: Self.modalTimingCategoryIdentifier,
+                soundBehavior: .none,
+                urgency: .active
+            )
+        case .stage2:
+            return AlertNotificationPayload(
+                title: "Meeting starts soon",
+                body: body,
+                categoryIdentifier: Self.stage2CategoryIdentifier,
+                soundBehavior: .defaultSound,
+                urgency: .timeSensitive
+            )
+        }
+    }
+
+    private static func body(eventTitle: String, eventStartTime: Date) -> String {
+        let startTime = eventStartTime.formatted(date: .omitted, time: .shortened)
+        return "\(eventTitle) starts at \(startTime)"
+    }
+}
+
 // MARK: - ScheduledAlert
 
 /// Represents a scheduled alert that persists across app restarts.
@@ -56,6 +129,18 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
     /// Start time of the event (for display in alert modal).
     public let eventStartTime: Date
 
+    /// End time of the event captured at schedule time.
+    public let eventEndTime: Date
+
+    /// Primary meeting join URL captured at schedule time.
+    public let joinURL: URL?
+
+    /// Google Calendar event URL captured at schedule time.
+    public let calendarURL: URL?
+
+    /// Notification content and OS delivery metadata captured at schedule time.
+    public let notificationPayload: AlertNotificationPayload
+
     public init(
         id: String,
         eventId: String,
@@ -64,7 +149,11 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         snoozeCount: Int = 0,
         originalFireTime: Date? = nil,
         eventTitle: String,
-        eventStartTime: Date
+        eventStartTime: Date,
+        eventEndTime: Date? = nil,
+        joinURL: URL? = nil,
+        calendarURL: URL? = nil,
+        notificationPayload: AlertNotificationPayload? = nil
     ) {
         self.id = id
         self.eventId = eventId
@@ -74,6 +163,79 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         self.originalFireTime = originalFireTime
         self.eventTitle = eventTitle
         self.eventStartTime = eventStartTime
+        self.eventEndTime = eventEndTime ?? eventStartTime
+        self.joinURL = joinURL
+        self.calendarURL = calendarURL
+        self.notificationPayload = notificationPayload ?? AlertNotificationPayload.make(
+            eventTitle: eventTitle,
+            eventStartTime: eventStartTime,
+            stage: stage
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case eventId
+        case stage
+        case scheduledFireTime
+        case snoozeCount
+        case originalFireTime
+        case eventTitle
+        case eventStartTime
+        case eventEndTime
+        case joinURL
+        case calendarURL
+        case notificationPayload
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let id = try container.decode(String.self, forKey: .id)
+        let eventId = try container.decode(String.self, forKey: .eventId)
+        let stage = try container.decode(AlertStage.self, forKey: .stage)
+        let scheduledFireTime = try container.decode(Date.self, forKey: .scheduledFireTime)
+        let snoozeCount = try container.decode(Int.self, forKey: .snoozeCount)
+        let originalFireTime = try container.decodeIfPresent(Date.self, forKey: .originalFireTime)
+        let eventTitle = try container.decode(String.self, forKey: .eventTitle)
+        let eventStartTime = try container.decode(Date.self, forKey: .eventStartTime)
+        let notificationPayload = try container.decodeIfPresent(
+            AlertNotificationPayload.self,
+            forKey: .notificationPayload
+        )
+        let eventEndTime = try container.decodeIfPresent(Date.self, forKey: .eventEndTime)
+        let joinURL = try container.decodeIfPresent(URL.self, forKey: .joinURL)
+        let calendarURL = try container.decodeIfPresent(URL.self, forKey: .calendarURL)
+
+        self.init(
+            id: id,
+            eventId: eventId,
+            stage: stage,
+            scheduledFireTime: scheduledFireTime,
+            snoozeCount: snoozeCount,
+            originalFireTime: originalFireTime,
+            eventTitle: eventTitle,
+            eventStartTime: eventStartTime,
+            eventEndTime: eventEndTime,
+            joinURL: joinURL,
+            calendarURL: calendarURL,
+            notificationPayload: notificationPayload
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(self.id, forKey: .id)
+        try container.encode(self.eventId, forKey: .eventId)
+        try container.encode(self.stage, forKey: .stage)
+        try container.encode(self.scheduledFireTime, forKey: .scheduledFireTime)
+        try container.encode(self.snoozeCount, forKey: .snoozeCount)
+        try container.encodeIfPresent(self.originalFireTime, forKey: .originalFireTime)
+        try container.encode(self.eventTitle, forKey: .eventTitle)
+        try container.encode(self.eventStartTime, forKey: .eventStartTime)
+        try container.encode(self.eventEndTime, forKey: .eventEndTime)
+        try container.encodeIfPresent(self.joinURL, forKey: .joinURL)
+        try container.encodeIfPresent(self.calendarURL, forKey: .calendarURL)
+        try container.encode(self.notificationPayload, forKey: .notificationPayload)
     }
 }
 
@@ -90,7 +252,11 @@ public extension ScheduledAlert {
             snoozeCount: self.snoozeCount + 1,
             originalFireTime: self.originalFireTime ?? self.scheduledFireTime,
             eventTitle: self.eventTitle,
-            eventStartTime: self.eventStartTime
+            eventStartTime: self.eventStartTime,
+            eventEndTime: self.eventEndTime,
+            joinURL: self.joinURL,
+            calendarURL: self.calendarURL,
+            notificationPayload: self.notificationPayload
         )
     }
 
