@@ -219,6 +219,9 @@ make check          # Lint + static analysis
 make check-test     # Both checks and tests
 ```
 
+Manual lifecycle and notification validation lives in
+`docs/testing/2026-04-28-alert-delivery-reliability-smoke-test.md`.
+
 ### Code Quality
 ```bash
 make format         # Auto-format code
