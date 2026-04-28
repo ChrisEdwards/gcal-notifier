@@ -139,8 +139,14 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
     /// Google Calendar event URL captured at schedule time.
     public let calendarURL: URL?
 
+    /// Compact presentation context captured at schedule time.
+    public let contextLine: String
+
     /// Notification content and OS delivery metadata captured at schedule time.
     public let notificationPayload: AlertNotificationPayload
+
+    /// Stable fingerprint for detecting stale pending notification snapshots.
+    public let snapshotFingerprint: String
 
     public init(
         id: String,
@@ -154,8 +160,18 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         eventEndTime: Date? = nil,
         joinURL: URL? = nil,
         calendarURL: URL? = nil,
-        notificationPayload: AlertNotificationPayload? = nil
+        contextLine: String? = nil,
+        notificationPayload: AlertNotificationPayload? = nil,
+        snapshotFingerprint: String? = nil
     ) {
+        let resolvedEventEndTime = eventEndTime ?? eventStartTime
+        let resolvedContextLine = contextLine ?? ""
+        let resolvedPayload = notificationPayload ?? AlertNotificationPayload.make(
+            eventTitle: eventTitle,
+            eventStartTime: eventStartTime,
+            stage: stage
+        )
+
         self.id = id
         self.eventId = eventId
         self.stage = stage
@@ -164,14 +180,25 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         self.originalFireTime = originalFireTime
         self.eventTitle = eventTitle
         self.eventStartTime = eventStartTime
-        self.eventEndTime = eventEndTime ?? eventStartTime
+        self.eventEndTime = resolvedEventEndTime
         self.joinURL = joinURL
         self.calendarURL = calendarURL
-        self.notificationPayload = notificationPayload ?? AlertNotificationPayload.make(
-            eventTitle: eventTitle,
-            eventStartTime: eventStartTime,
-            stage: stage
-        )
+        self.contextLine = resolvedContextLine
+        self.notificationPayload = resolvedPayload
+        self.snapshotFingerprint = snapshotFingerprint ?? Self.makeSnapshotFingerprint([
+            stage.rawValue,
+            eventTitle,
+            Self.iso8601String(from: eventStartTime),
+            Self.iso8601String(from: resolvedEventEndTime),
+            joinURL?.absoluteString ?? "",
+            calendarURL?.absoluteString ?? "",
+            resolvedContextLine,
+            resolvedPayload.title,
+            resolvedPayload.body,
+            resolvedPayload.categoryIdentifier,
+            resolvedPayload.soundBehavior.rawValue,
+            resolvedPayload.urgency.rawValue,
+        ])
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -186,7 +213,9 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         case eventEndTime
         case joinURL
         case calendarURL
+        case contextLine
         case notificationPayload
+        case snapshotFingerprint
     }
 
     public init(from decoder: Decoder) throws {
@@ -206,6 +235,8 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         let eventEndTime = try container.decodeIfPresent(Date.self, forKey: .eventEndTime)
         let joinURL = try container.decodeIfPresent(URL.self, forKey: .joinURL)
         let calendarURL = try container.decodeIfPresent(URL.self, forKey: .calendarURL)
+        let contextLine = try container.decodeIfPresent(String.self, forKey: .contextLine)
+        let snapshotFingerprint = try container.decodeIfPresent(String.self, forKey: .snapshotFingerprint)
 
         self.init(
             id: id,
@@ -219,7 +250,9 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
             eventEndTime: eventEndTime,
             joinURL: joinURL,
             calendarURL: calendarURL,
-            notificationPayload: notificationPayload
+            contextLine: contextLine,
+            notificationPayload: notificationPayload,
+            snapshotFingerprint: snapshotFingerprint
         )
     }
 
@@ -236,7 +269,19 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         try container.encode(self.eventEndTime, forKey: .eventEndTime)
         try container.encodeIfPresent(self.joinURL, forKey: .joinURL)
         try container.encodeIfPresent(self.calendarURL, forKey: .calendarURL)
+        try container.encode(self.contextLine, forKey: .contextLine)
         try container.encode(self.notificationPayload, forKey: .notificationPayload)
+        try container.encode(self.snapshotFingerprint, forKey: .snapshotFingerprint)
+    }
+
+    private static func makeSnapshotFingerprint(_ components: [String]) -> String {
+        components
+            .map { "\($0.count):\($0)" }
+            .joined(separator: "|")
+    }
+
+    private static func iso8601String(from date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 }
 
@@ -278,6 +323,7 @@ public extension ScheduledAlert {
             eventEndTime: self.eventEndTime,
             joinURL: self.joinURL,
             calendarURL: self.calendarURL,
+            contextLine: self.contextLine,
             notificationPayload: self.notificationPayload
         )
     }
@@ -295,6 +341,7 @@ public extension ScheduledAlert {
             eventEndTime: alert.eventEndTime,
             joinURL: alert.joinURL,
             calendarURL: alert.calendarURL,
+            contextLine: alert.contextLine,
             notificationPayload: alert.notificationPayload
         )
     }

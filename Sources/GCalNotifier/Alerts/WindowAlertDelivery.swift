@@ -54,7 +54,8 @@ public final class WindowAlertDelivery: AlertDelivery {
 
     @MainActor
     private func showAlert(_ alert: ScheduledAlert) async {
-        let event = await self.displayEvent(for: alert)
+        let display = await self.displayEvent(for: alert)
+        let event = display.event
         let isSnoozed = alert.snoozeCount > 0
         let snoozeContext = isSnoozed ? "Snoozed \(alert.snoozeCount) time(s)" : nil
         let snoozeDurations = await self.snoozeDurations(for: alert)
@@ -67,7 +68,8 @@ public final class WindowAlertDelivery: AlertDelivery {
             stage: alert.stage,
             snoozed: isSnoozed,
             snoozeContext: snoozeContext,
-            snoozeDurations: snoozeDurations
+            snoozeDurations: snoozeDurations,
+            contextLine: display.contextLine
         )
         Logger.alerts.info(
             "Alert window shown for \(alert.id) (stage=\(alert.stage.rawValue), snoozed=\(isSnoozed))"
@@ -80,7 +82,8 @@ public final class WindowAlertDelivery: AlertDelivery {
 
     @MainActor
     private func handleDowngradedAlert(_ alert: ScheduledAlert, reason: AlertDowngradeReason) async {
-        let event = await self.displayEvent(for: alert)
+        let display = await self.displayEvent(for: alert)
+        let event = display.event
         let title = self.bannerTitle(for: event)
         await self.scheduler.showBannerNotification(
             title: title,
@@ -90,9 +93,6 @@ public final class WindowAlertDelivery: AlertDelivery {
         Logger.alerts.info("Banner shown for \(alert.id) (reason=\(String(describing: reason)))")
         SoundPlayer.shared.playDowngradedAlertSound(for: reason)
         self.onAlertDelivered?()
-        if let engine = self.alertEngine {
-            await engine.acknowledgeAlert(alertId: alert.id, eventStartTime: alert.eventStartTime)
-        }
     }
 
     private func bannerTitle(for event: CalendarEvent) -> String {
@@ -108,20 +108,24 @@ public final class WindowAlertDelivery: AlertDelivery {
         return "Meeting in \(minutes) minute\(minutes == 1 ? "" : "s")"
     }
 
-    private func displayEvent(for alert: ScheduledAlert) async -> CalendarEvent {
+    private func displayEvent(for alert: ScheduledAlert) async -> DisplayAlertEvent {
         if let event = await self.loadEvent(for: alert) {
-            return event
+            return DisplayAlertEvent(event: event, contextLine: nil)
         }
 
         Logger.alerts.warning(
             "Using alert snapshot fallback for \(alert.id) (stage=\(alert.stage.rawValue))"
         )
-        return alert.fallbackCalendarEvent
+        return DisplayAlertEvent(event: alert.fallbackCalendarEvent, contextLine: self.snapshotContextLine(for: alert))
     }
 
     private func snoozeDurations(for alert: ScheduledAlert) async -> [TimeInterval] {
         guard let engine = self.alertEngine else { return AlertSnoozePolicy.supportedDurations }
         return await engine.validSnoozeDurations(alertId: alert.id)
+    }
+
+    private func snapshotContextLine(for alert: ScheduledAlert) -> String? {
+        alert.contextLine.isEmpty ? nil : alert.contextLine
     }
 
     @MainActor
@@ -149,4 +153,9 @@ public final class WindowAlertDelivery: AlertDelivery {
             return nil
         }
     }
+}
+
+private struct DisplayAlertEvent {
+    let event: CalendarEvent
+    let contextLine: String?
 }

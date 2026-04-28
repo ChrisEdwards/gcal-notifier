@@ -1,6 +1,28 @@
 import GCalNotifierCore
 import SwiftUI
 
+// MARK: - AlertContentContext
+
+/// Presentation metadata for a single alert content view.
+public struct AlertContentContext {
+    let stage: AlertStage
+    let isSnoozed: Bool
+    let snoozeContext: String?
+    let contextLine: String?
+
+    public init(
+        stage: AlertStage,
+        isSnoozed: Bool,
+        snoozeContext: String?,
+        contextLine: String?
+    ) {
+        self.stage = stage
+        self.isSnoozed = isSnoozed
+        self.snoozeContext = snoozeContext
+        self.contextLine = contextLine
+    }
+}
+
 // MARK: - AlertContentView
 
 /// SwiftUI view for single event alert modal content.
@@ -10,6 +32,7 @@ public struct AlertContentView: View {
     let stage: AlertStage
     let isSnoozed: Bool
     let snoozeContext: String?
+    let contextLine: String?
 
     let onJoin: () -> Void
     let onSnooze: (TimeInterval) -> Void
@@ -22,6 +45,7 @@ public struct AlertContentView: View {
         stage: AlertStage,
         isSnoozed: Bool,
         snoozeContext: String?,
+        contextLine: String? = nil,
         onJoin: @escaping () -> Void,
         onSnooze: @escaping (TimeInterval) -> Void,
         onOpenCalendar: @escaping () -> Void,
@@ -32,6 +56,7 @@ public struct AlertContentView: View {
         self.stage = stage
         self.isSnoozed = isSnoozed
         self.snoozeContext = snoozeContext
+        self.contextLine = contextLine
         self.onJoin = onJoin
         self.onSnooze = onSnooze
         self.onOpenCalendar = onOpenCalendar
@@ -106,10 +131,15 @@ extension AlertContentView {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
-            Text(self.event.contextLine)
+            Text(self.displayContextLine)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
         }
+    }
+
+    private var displayContextLine: String {
+        guard let contextLine, !contextLine.isEmpty else { return self.event.contextLine }
+        return contextLine
     }
 
     private var timeRange: String {
@@ -268,16 +298,15 @@ public struct AlertContentViewProvider: AlertContentProvider {
 
     public func makeContentView(
         event: CalendarEvent,
-        stage: AlertStage,
-        isSnoozed: Bool,
-        snoozeContext: String?,
+        context: AlertContentContext,
         actions: AlertWindowActions
     ) -> some View {
         AlertContentView(
             event: event,
-            stage: stage,
-            isSnoozed: isSnoozed,
-            snoozeContext: snoozeContext,
+            stage: context.stage,
+            isSnoozed: context.isSnoozed,
+            snoozeContext: context.snoozeContext,
+            contextLine: context.contextLine,
             onJoin: actions.onJoin,
             onSnooze: actions.onSnooze,
             onOpenCalendar: actions.onOpenCalendar,

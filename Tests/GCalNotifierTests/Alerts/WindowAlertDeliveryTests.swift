@@ -43,6 +43,40 @@ struct WindowAlertDeliveryTests {
 
         #expect(controller.window?.contentView != nil)
     }
+
+    @MainActor
+    @Test("Downgraded delivery does not acknowledge scheduled alert")
+    func downgradedDeliveryDoesNotAcknowledgeScheduledAlert() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+
+        let alert = try makeWindowDeliveryStage2Alert()
+        let settings = try makeAlertTestSettings(stage1Minutes: 0, stage2Minutes: 2)
+        let center = MockNotificationCenter()
+        let delegate = NotificationDelegate()
+        let notificationScheduler = await NotificationScheduler(center: center, delegate: delegate)
+        let delivery = WindowAlertDelivery(
+            windowController: AlertWindowController(window: NSWindow()),
+            eventCache: EventCache(fileURL: fileURL),
+            settings: settings,
+            scheduler: notificationScheduler
+        )
+        let engine = AlertEngine(
+            alertsStore: ScheduledAlertsStore(fileURL: fileURL.appendingPathExtension("alerts")),
+            scheduler: MockAlertScheduler(),
+            delivery: delivery,
+            durableNotificationScheduler: notificationScheduler,
+            dateProvider: { alert.scheduledFireTime.addingTimeInterval(-60) }
+        )
+        await delivery.setAlertEngine(engine)
+        await engine.scheduleAlerts(for: [alert.fallbackCalendarEvent], settings: settings)
+
+        await delivery.deliverDowngraded(alert: alert, reason: .screenSharing)
+
+        let remaining = await engine.scheduledAlerts
+        #expect(remaining.contains { $0.id == alert.id })
+        #expect(!center.removedIdentifiers.contains(alert.id))
+    }
 }
 
 @MainActor

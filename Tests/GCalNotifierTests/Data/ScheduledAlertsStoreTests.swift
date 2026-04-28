@@ -34,6 +34,7 @@ private func makeTestAlert(
     eventEndTime: Date? = nil,
     joinURL: URL? = nil,
     calendarURL: URL? = nil,
+    contextLine: String? = nil,
     notificationPayload: AlertNotificationPayload? = nil
 ) -> ScheduledAlert {
     ScheduledAlert(
@@ -48,6 +49,7 @@ private func makeTestAlert(
         eventEndTime: eventEndTime,
         joinURL: joinURL,
         calendarURL: calendarURL,
+        contextLine: contextLine,
         notificationPayload: notificationPayload
     )
 }
@@ -76,6 +78,7 @@ private func makeFullPersistenceAlert() throws -> ScheduledAlert {
         eventEndTime: Date(timeIntervalSince1970: 1_700_004_200),
         joinURL: joinURL,
         calendarURL: calendarURL,
+        contextLine: "5 attendees - Accepted",
         notificationPayload: notificationPayload
     )
 }
@@ -185,9 +188,11 @@ struct ScheduledAlertsStoreSaveAndLoadTests {
             eventEndTime: endTime,
             joinURL: joinURL,
             calendarURL: calendarURL,
+            contextLine: "5 attendees - Accepted",
             notificationPayload: payload
         )
 
+        let snapshotFingerprint = alert.snapshotFingerprint
         try await store.save([alert])
         let loaded = try await store.load()
         let loadedAlert = try #require(loaded.first)
@@ -199,7 +204,9 @@ struct ScheduledAlertsStoreSaveAndLoadTests {
         #expect(loadedAlert.scheduledFireTime == fireTime)
         #expect(loadedAlert.joinURL == joinURL)
         #expect(loadedAlert.calendarURL == calendarURL)
+        #expect(loadedAlert.contextLine == "5 attendees - Accepted")
         #expect(loadedAlert.notificationPayload == payload)
+        #expect(loadedAlert.snapshotFingerprint == snapshotFingerprint)
     }
 }
 
@@ -366,7 +373,8 @@ struct ScheduledAlertModelTests {
             eventStartTime: startTime,
             eventEndTime: endTime,
             joinURL: joinURL,
-            calendarURL: calendarURL
+            calendarURL: calendarURL,
+            contextLine: "Snapshot context"
         )
 
         let event = alert.fallbackCalendarEvent
@@ -377,6 +385,16 @@ struct ScheduledAlertModelTests {
         #expect(event.endTime == endTime)
         #expect(event.primaryMeetingURL == joinURL)
         #expect(event.htmlLink == calendarURL)
+        #expect(alert.contextLine == "Snapshot context")
+    }
+
+    @Test("Snapshot fingerprint changes when presentation context changes")
+    func snapshotFingerprintChangesWhenPresentationContextChanges() {
+        let startTime = Date(timeIntervalSince1970: 1_800_000_000)
+        let alert1 = makeTestAlert(id: "fingerprint-alert", eventStartTime: startTime, contextLine: "Original context")
+        let alert2 = makeTestAlert(id: "fingerprint-alert", eventStartTime: startTime, contextLine: "Updated context")
+
+        #expect(alert1.snapshotFingerprint != alert2.snapshotFingerprint)
     }
 
     @Test("Alerts with same data are equal")

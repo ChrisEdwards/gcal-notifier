@@ -49,6 +49,7 @@ public extension AlertEngine {
             eventEndTime: alert.eventEndTime,
             joinURL: alert.joinURL,
             calendarURL: alert.calendarURL,
+            contextLine: alert.contextLine,
             notificationPayload: alert.notificationPayload
         )
     }

@@ -47,9 +47,7 @@ public protocol AlertContentProvider {
 
     func makeContentView(
         event: CalendarEvent,
-        stage: AlertStage,
-        isSnoozed: Bool,
-        snoozeContext: String?,
+        context: AlertContentContext,
         actions: AlertWindowActions
     ) -> ContentView
 }
@@ -109,16 +107,15 @@ public struct DefaultAlertContentProvider: AlertContentProvider {
 
     public func makeContentView(
         event: CalendarEvent,
-        stage: AlertStage,
-        isSnoozed: Bool,
-        snoozeContext: String?,
+        context: AlertContentContext,
         actions: AlertWindowActions
     ) -> some View {
         AlertContentView(
             event: event,
-            stage: stage,
-            isSnoozed: isSnoozed,
-            snoozeContext: snoozeContext,
+            stage: context.stage,
+            isSnoozed: context.isSnoozed,
+            snoozeContext: context.snoozeContext,
+            contextLine: context.contextLine,
             onJoin: actions.onJoin,
             onSnooze: actions.onSnooze,
             onOpenCalendar: actions.onOpenCalendar,
@@ -261,7 +258,8 @@ public extension AlertWindowController {
         stage: AlertStage,
         snoozed: Bool = false,
         snoozeContext: String? = nil,
-        snoozeDurations: [TimeInterval] = AlertSnoozePolicy.supportedDurations
+        snoozeDurations: [TimeInterval] = AlertSnoozePolicy.supportedDurations,
+        contextLine: String? = nil
     ) {
         self.currentEvent = event
         self.currentStage = stage
@@ -273,14 +271,18 @@ public extension AlertWindowController {
             onDismiss: { [weak self] in self?.dismiss() },
             snoozeDurations: snoozeDurations
         )
+        let context = AlertContentContext(
+            stage: stage,
+            isSnoozed: snoozed,
+            snoozeContext: snoozeContext,
+            contextLine: contextLine
+        )
 
         // Create content view using default provider
         let provider = DefaultAlertContentProvider()
         let contentView = provider.makeContentView(
             event: event,
-            stage: stage,
-            isSnoozed: snoozed,
-            snoozeContext: snoozeContext,
+            context: context,
             actions: actions
         )
 
@@ -314,6 +316,7 @@ public extension AlertWindowController {
         snoozed: Bool = false,
         snoozeContext: String? = nil,
         snoozeDurations: [TimeInterval] = AlertSnoozePolicy.supportedDurations,
+        contextLine: String? = nil,
         contentProvider: some AlertContentProvider
     ) {
         self.currentEvent = event
@@ -326,12 +329,16 @@ public extension AlertWindowController {
             onDismiss: { [weak self] in self?.dismiss() },
             snoozeDurations: snoozeDurations
         )
-
-        let contentView = contentProvider.makeContentView(
-            event: event,
+        let context = AlertContentContext(
             stage: stage,
             isSnoozed: snoozed,
             snoozeContext: snoozeContext,
+            contextLine: contextLine
+        )
+
+        let contentView = contentProvider.makeContentView(
+            event: event,
+            context: context,
             actions: actions
         )
 

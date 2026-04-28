@@ -47,14 +47,14 @@ private func makeTestMeetingLink(
 @MainActor
 private final class RecordingAlertContentProvider: AlertContentProvider {
     private(set) var capturedActions: AlertWindowActions?
+    private(set) var capturedContextLine: String?
 
     func makeContentView(
         event _: CalendarEvent,
-        stage _: AlertStage,
-        isSnoozed _: Bool,
-        snoozeContext _: String?,
+        context: AlertContentContext,
         actions: AlertWindowActions
     ) -> some View {
+        self.capturedContextLine = context.contextLine
         self.capturedActions = actions
         return EmptyView()
     }
@@ -231,9 +231,7 @@ struct AlertContentProviderTests {
 
         let view = provider.makeContentView(
             event: event,
-            stage: .stage1,
-            isSnoozed: false,
-            snoozeContext: nil,
+            context: AlertContentContext(stage: .stage1, isSnoozed: false, snoozeContext: nil, contextLine: nil),
             actions: actions
         )
 
@@ -258,9 +256,7 @@ struct AlertContentProviderTests {
         // We can't inspect SwiftUI view internals, but we verify it doesn't crash
         let view = provider.makeContentView(
             event: event,
-            stage: .stage2,
-            isSnoozed: true,
-            snoozeContext: "10:00 AM",
+            context: AlertContentContext(stage: .stage2, isSnoozed: true, snoozeContext: "10:00 AM", contextLine: nil),
             actions: actions
         )
 
@@ -323,6 +319,18 @@ struct ShowAlertTests {
         controller.showAlert(for: event, stage: .stage1, snoozeDurations: [60], contentProvider: provider)
 
         #expect(provider.capturedActions?.snoozeDurations == [60])
+    }
+
+    @MainActor
+    @Test("showAlert forwards snapshot context line to modal content")
+    func showAlertForwardsSnapshotContextLine() {
+        let controller = AlertWindowController()
+        let event = makeTestEvent()
+        let provider = RecordingAlertContentProvider()
+
+        controller.showAlert(for: event, stage: .stage2, contextLine: "Snapshot context", contentProvider: provider)
+
+        #expect(provider.capturedContextLine == "Snapshot context")
     }
 }
 

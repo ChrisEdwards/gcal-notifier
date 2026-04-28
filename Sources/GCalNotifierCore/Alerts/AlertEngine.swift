@@ -245,6 +245,7 @@ extension AlertEngine {
             eventEndTime: event.endTime,
             joinURL: event.primaryMeetingURL,
             calendarURL: event.htmlLink,
+            contextLine: event.contextLine,
             notificationPayload: AlertNotificationPayload.make(
                 eventTitle: event.title,
                 eventStartTime: event.startTime,

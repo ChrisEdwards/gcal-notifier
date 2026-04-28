@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@preconcurrency import UserNotifications
 @testable import GCalNotifierCore
 
 @Suite("NotificationScheduler Durable Notification Tests")
@@ -41,7 +42,7 @@ struct NotificationSchedulerDurableTests {
         #expect(request.title == alert.notificationPayload.title)
         #expect(request.body == alert.notificationPayload.body)
         #expect(request.body.contains(alert.eventTitle))
-        #expect(request.categoryIdentifier == AlertNotificationPayload.stage2CategoryIdentifier)
+        #expect(request.categoryIdentifier == NotificationScheduler.stage2Snooze5Category)
         #expect(request.soundIsNil == false)
         #expect(request.isTimeSensitive)
     }
@@ -64,7 +65,10 @@ struct NotificationSchedulerDurableTests {
         #expect(request.userInfo["eventTitle"] == alert.eventTitle)
         #expect(request.userInfo["joinURL"] == alert.joinURL?.absoluteString)
         #expect(request.userInfo["calendarURL"] == alert.calendarURL?.absoluteString)
+        #expect(request.userInfo["contextLine"] == alert.contextLine)
+        #expect(request.userInfo["snapshotFingerprint"] == alert.snapshotFingerprint)
         #expect(request.userInfo["notificationBody"] == alert.notificationPayload.body)
+        #expect(request.userInfo["notificationCategory"] == request.categoryIdentifier)
         #expect(request.userInfo["notificationUrgency"] == AlertNotificationUrgency.timeSensitive.rawValue)
     }
 
@@ -128,6 +132,51 @@ struct NotificationSchedulerDurableTests {
         #expect(NotificationScheduler.stage1CategoryIdentifier(validSnoozeDurations: [60, 180]) == NotificationScheduler
             .stage1Snooze3Category)
     }
+
+    @Test("Stage 2 category matches valid snooze durations")
+    func stage2CategoryMatchesValidSnoozeDurations() async throws {
+        let mockCenter = MockNotificationCenter()
+        let delegate = NotificationDelegate()
+        let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
+        let alert = try makeStage2NotificationTestAlert(fireDate: Date(timeIntervalSince1970: 1_800_000_000))
+
+        await scheduler.scheduleNotification(for: alert, snoozeDurations: [60, 180])
+
+        let request = try #require(mockCenter.pendingRequests.first)
+        #expect(request.categoryIdentifier == NotificationScheduler.stage2Snooze3Category)
+        #expect(NotificationScheduler.stage2CategoryIdentifier(validSnoozeDurations: []) == NotificationScheduler
+            .stage2AlertCategory)
+        #expect(NotificationScheduler.stage2CategoryIdentifier(validSnoozeDurations: [60]) == NotificationScheduler
+            .stage2Snooze1Category)
+    }
+
+    @Test("Registered stage categories expose Join Snooze and Dismiss actions")
+    func registeredStageCategoriesExposeFullActionMatrix() throws {
+        let stage1Actions = try actionIdentifiers(for: NotificationScheduler.stage1Snooze5Category)
+        let stage2Actions = try actionIdentifiers(for: NotificationScheduler.stage2Snooze5Category)
+
+        #expect(stage1Actions == [
+            NotificationScheduler.stage1JoinActionIdentifier,
+            NotificationScheduler.stage1Snooze1ActionIdentifier,
+            NotificationScheduler.stage1Snooze3ActionIdentifier,
+            NotificationScheduler.stage1Snooze5ActionIdentifier,
+            NotificationScheduler.stage1DismissActionIdentifier,
+        ])
+        #expect(stage2Actions == [
+            NotificationScheduler.stage2JoinActionIdentifier,
+            NotificationScheduler.stage2Snooze1ActionIdentifier,
+            NotificationScheduler.stage2Snooze3ActionIdentifier,
+            NotificationScheduler.stage2Snooze5ActionIdentifier,
+            NotificationScheduler.stage2DismissActionIdentifier,
+        ])
+    }
+}
+
+private func actionIdentifiers(for categoryIdentifier: String) throws -> [String] {
+    let category = try #require(
+        NotificationScheduler.registeredCategories.first { $0.identifier == categoryIdentifier }
+    )
+    return category.actions.map(\.identifier)
 }
 
 private func makeStage1NotificationTestAlert(fireDate: Date) throws -> ScheduledAlert {
@@ -146,6 +195,7 @@ private func makeStage1NotificationTestAlert(fireDate: Date) throws -> Scheduled
         eventEndTime: eventEnd,
         joinURL: joinURL,
         calendarURL: calendarURL,
+        contextLine: "5 attendees - Accepted",
         notificationPayload: AlertNotificationPayload.make(
             eventTitle: "Early Warning Review",
             eventStartTime: eventStart,
@@ -170,6 +220,7 @@ private func makeStage2NotificationTestAlert(fireDate: Date) throws -> Scheduled
         eventEndTime: eventEnd,
         joinURL: joinURL,
         calendarURL: calendarURL,
+        contextLine: "5 attendees - Accepted",
         notificationPayload: AlertNotificationPayload.make(
             eventTitle: "Cache Independent Review",
             eventStartTime: eventStart,

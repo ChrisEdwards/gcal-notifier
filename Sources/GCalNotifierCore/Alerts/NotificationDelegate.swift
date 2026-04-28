@@ -9,9 +9,9 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 
     static func presentationOptions(forCategoryIdentifier identifier: String) -> UNNotificationPresentationOptions {
-        let shouldShowBanner = Self.isStage1Category(identifier) ||
-            identifier == NotificationScheduler.backToBackAlertCategory ||
-            identifier == NotificationScheduler.stage2AlertCategory
+        let shouldShowBanner = NotificationScheduler.isStage1Category(identifier) ||
+            NotificationScheduler.isStage2Category(identifier) ||
+            identifier == NotificationScheduler.backToBackAlertCategory
         return shouldShowBanner ? [.banner, .list] : []
     }
 
@@ -79,13 +79,13 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         categoryIdentifier: String,
         actionIdentifier: String
     ) async {
-        if Self.isStage1Category(categoryIdentifier) {
-            await self.fireCommandInternal(Self.stage1Command(alertId: alertId, actionIdentifier: actionIdentifier))
+        if NotificationScheduler.isStage1Category(categoryIdentifier) {
+            await self.fireCommandInternal(Self.stageCommand(alertId: alertId, actionIdentifier: actionIdentifier))
             return
         }
 
-        if categoryIdentifier == NotificationScheduler.stage2AlertCategory {
-            await self.fireCommandInternal(Self.command(alertId: alertId, actionIdentifier: actionIdentifier))
+        if NotificationScheduler.isStage2Category(categoryIdentifier) {
+            await self.fireCommandInternal(Self.stageCommand(alertId: alertId, actionIdentifier: actionIdentifier))
             return
         }
 
@@ -94,35 +94,20 @@ public actor NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private static func command(alertId: String, actionIdentifier: String) -> AlertCommand {
+    private static func stageCommand(alertId: String, actionIdentifier: String) -> AlertCommand {
         switch actionIdentifier {
-        case NotificationScheduler.stage2JoinActionIdentifier:
-            .join(alertId: alertId)
-        case NotificationScheduler.stage2SnoozeActionIdentifier:
-            .snooze(alertId: alertId, duration: NotificationScheduler.stage2SnoozeDuration)
-        case NotificationScheduler.stage2DismissActionIdentifier, UNNotificationDismissActionIdentifier:
-            .dismiss(alertId: alertId)
+        case NotificationScheduler.stage1JoinActionIdentifier,
+             NotificationScheduler.stage2JoinActionIdentifier:
+            return .join(alertId: alertId)
+        case NotificationScheduler.stage1DismissActionIdentifier,
+             NotificationScheduler.stage2DismissActionIdentifier,
+             UNNotificationDismissActionIdentifier:
+            return .dismiss(alertId: alertId)
         default:
-            .showContext(alertId: alertId)
-        }
-    }
-
-    private static func stage1Command(alertId: String, actionIdentifier: String) -> AlertCommand {
-        guard let duration = NotificationScheduler.snoozeDuration(forActionIdentifier: actionIdentifier) else {
+            if let duration = NotificationScheduler.snoozeDuration(forActionIdentifier: actionIdentifier) {
+                return .snooze(alertId: alertId, duration: duration)
+            }
             return .showContext(alertId: alertId)
-        }
-        return .snooze(alertId: alertId, duration: duration)
-    }
-
-    private static func isStage1Category(_ identifier: String) -> Bool {
-        switch identifier {
-        case NotificationScheduler.stage1AlertCategory,
-             NotificationScheduler.stage1Snooze1Category,
-             NotificationScheduler.stage1Snooze3Category,
-             NotificationScheduler.stage1Snooze5Category:
-            true
-        default:
-            false
         }
     }
 

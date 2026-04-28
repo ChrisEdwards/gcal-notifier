@@ -283,9 +283,7 @@ struct AlertContentViewProviderTests {
 
         let view = provider.makeContentView(
             event: event,
-            stage: .stage1,
-            isSnoozed: false,
-            snoozeContext: nil,
+            context: AlertContentContext(stage: .stage1, isSnoozed: false, snoozeContext: nil, contextLine: nil),
             actions: actions
         )
 
@@ -311,9 +309,7 @@ struct AlertContentViewProviderTests {
 
         let view = provider.makeContentView(
             event: event,
-            stage: .stage2,
-            isSnoozed: true,
-            snoozeContext: "10:00 AM",
+            context: AlertContentContext(stage: .stage2, isSnoozed: true, snoozeContext: "10:00 AM", contextLine: nil),
             actions: actions
         )
 
