@@ -74,6 +74,7 @@ public final class WindowAlertDelivery: AlertDelivery {
         Logger.alerts.info(
             "Alert window shown for \(alert.id) (stage=\(alert.stage.rawValue), snoozed=\(isSnoozed))"
         )
+        AlertDiagnostics.log(.modalPresented, alert: alert)
 
         let soundName = alert.stage == .stage1 ? self.settings.stage1Sound : self.settings.stage2Sound
         SoundPlayer.shared.play(named: soundName, customPath: self.settings.customSoundPath)
@@ -91,6 +92,7 @@ public final class WindowAlertDelivery: AlertDelivery {
             identifier: "\(alert.id)-banner"
         )
         Logger.alerts.info("Banner shown for \(alert.id) (reason=\(String(describing: reason)))")
+        AlertDiagnostics.log(.modalDowngraded, alert: alert, reason: String(describing: reason))
         SoundPlayer.shared.playDowngradedAlertSound(for: reason)
         self.onAlertDelivered?()
     }
@@ -116,6 +118,7 @@ public final class WindowAlertDelivery: AlertDelivery {
         Logger.alerts.warning(
             "Using alert snapshot fallback for \(alert.id) (stage=\(alert.stage.rawValue))"
         )
+        AlertDiagnostics.log(.snapshotFallbackUsed, alert: alert, reason: "event-cache-miss")
         return DisplayAlertEvent(event: alert.fallbackCalendarEvent, contextLine: self.snapshotContextLine(for: alert))
     }
 

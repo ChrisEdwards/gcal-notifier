@@ -12,6 +12,7 @@ public enum MenuBuilder {
     public enum MenuItem: Equatable, Sendable {
         case setupRequired
         case notificationWarning
+        case launchAtLoginWarning(status: LaunchAtLoginStatus)
         case quickJoin(title: String, event: CalendarEvent)
         case conflictWarning(time: String, count: Int)
         case sectionHeader(title: String)
@@ -27,6 +28,7 @@ public enum MenuBuilder {
         case settings
         case quit
         case openNotificationSettings
+        case openLoginItemsSettings
     }
 
     // MARK: - Public API
@@ -55,6 +57,8 @@ public enum MenuBuilder {
         events: [CalendarEvent],
         conflictingEventIds: Set<String>,
         notificationPermissionDenied: Bool = false,
+        notificationAuthorizationStatus: NotificationAuthorizationStatus? = nil,
+        launchAtLoginStatus: LaunchAtLoginStatus = .enabled,
         setupRequired: Bool = false,
         now: Date = Date(),
         alertableEvents: [CalendarEvent]? = nil
@@ -65,12 +69,12 @@ public enum MenuBuilder {
         }
 
         var items: [MenuItem] = []
-
-        // Notification permission warning at the top
-        if notificationPermissionDenied {
-            items.append(.notificationWarning)
-            items.append(.separator)
-        }
+        self.appendReliabilityWarnings(
+            to: &items,
+            notificationPermissionDenied: notificationPermissionDenied,
+            notificationAuthorizationStatus: notificationAuthorizationStatus,
+            launchAtLoginStatus: launchAtLoginStatus
+        )
 
         let todaysEvents = Self.filterTodaysEvents(events, now: now)
         let alertableSource = alertableEvents ?? events
@@ -106,11 +110,7 @@ public enum MenuBuilder {
         }
         items.append(.separator)
 
-        // Actions
-        items.append(.action(title: "Refresh Now", action: .refresh))
-        items.append(.action(title: "Settings...", action: .settings))
-        items.append(.separator)
-        items.append(.action(title: "Quit gcal-notifier", action: .quit))
+        self.appendStandardActions(to: &items)
 
         return items
     }
@@ -157,6 +157,46 @@ public enum MenuBuilder {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private static func shouldShowNotificationWarning(
+        permissionDenied: Bool,
+        authorizationStatus: NotificationAuthorizationStatus?
+    ) -> Bool {
+        if permissionDenied { return true }
+        switch authorizationStatus {
+        case .denied, .notDetermined:
+            return true
+        case .authorized, .provisional, .ephemeral, nil:
+            return false
+        }
+    }
+
+    private static func appendReliabilityWarnings(
+        to items: inout [MenuItem],
+        notificationPermissionDenied: Bool,
+        notificationAuthorizationStatus: NotificationAuthorizationStatus?,
+        launchAtLoginStatus: LaunchAtLoginStatus
+    ) {
+        if self.shouldShowNotificationWarning(
+            permissionDenied: notificationPermissionDenied,
+            authorizationStatus: notificationAuthorizationStatus
+        ) {
+            items.append(.notificationWarning)
+            items.append(.separator)
+        }
+
+        if launchAtLoginStatus.modalAvailabilityDegraded {
+            items.append(.launchAtLoginWarning(status: launchAtLoginStatus))
+            items.append(.separator)
+        }
+    }
+
+    private static func appendStandardActions(to items: inout [MenuItem]) {
+        items.append(.action(title: "Refresh Now", action: .refresh))
+        items.append(.action(title: "Settings...", action: .settings))
+        items.append(.separator)
+        items.append(.action(title: "Quit gcal-notifier", action: .quit))
     }
 
     private static func makeMeetingItem(event: CalendarEvent, isConflicting: Bool) -> MenuItem {

@@ -195,6 +195,7 @@ extension AlertEngine {
         }
         self.acknowledgedAlertStartTimes[alertId] = alert.eventStartTime
         await self.cancelAlert(alertId: alertId)
+        AlertDiagnostics.log(.commandCompleted, alert: alert)
         return .completed(alert)
     }
 
@@ -213,6 +214,7 @@ extension AlertEngine {
     private func snoozeAlertCommand(alertId: String, duration: TimeInterval) async -> AlertCommandResult {
         do {
             let alert = try await self.snooze(alertId: alertId, duration: duration)
+            AlertDiagnostics.log(.commandSnoozed, alert: alert, reason: "\(Int(duration))s")
             return .snoozed(alert)
         } catch let AlertError.alertNotFound(missingAlertId) {
             return .missingAlert(alertId: missingAlertId)
@@ -268,6 +270,7 @@ extension AlertEngine {
             await self.cancelScheduledDelivery(for: existing)
         }
         self.alerts[alert.id] = alert
+        AlertDiagnostics.log(.alertRecordCreated, alert: alert)
         await self.scheduleTimer(for: alert)
         await self.scheduleDurableNotificationIfNeeded(for: alert)
     }
@@ -352,6 +355,7 @@ extension AlertEngine {
                 )
             }
         }
+        AlertDiagnostics.log(.localModalTriggerScheduled, alert: alert)
     }
 
     private func scheduleDurableNotificationIfNeeded(for alert: ScheduledAlert) async {
@@ -364,12 +368,16 @@ extension AlertEngine {
     func cancelScheduledDelivery(for alert: ScheduledAlert) async {
         await self.scheduler.cancel(alertId: alert.id)
         await self.durableNotificationScheduler.cancelNotification(alertId: alert.id)
+        AlertDiagnostics.log(.scheduledEffectsCanceled, alert: alert)
     }
 
     private func handleAlertFired(alertId: String, expectedFireTime: Date) async {
-        guard let alert = alerts[alertId] else { return }
-        guard alert.scheduledFireTime == expectedFireTime else { return }
-        guard self.isFreshLocalTrigger(alert) else { return }
+        guard let alert = alerts[alertId] else { AlertDiagnostics.logMissingAlertRecord(alertId: alertId); return }
+        guard alert.scheduledFireTime == expectedFireTime else {
+            AlertDiagnostics.logStaleLocalTriggerGeneration(alert)
+            return
+        }
+        guard self.isFreshLocalTrigger(alert) else { AlertDiagnostics.logStaleLocalTrigger(alert); return }
 
         if let reason = await self.checkPresentationModeSuppression() {
             await self.delivery.deliverDowngraded(alert: alert, reason: reason)

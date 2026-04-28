@@ -7,7 +7,7 @@ import ServiceManagement
 // MARK: - LaunchAtLoginStatus
 
 /// Status of launch-at-login registration with the system.
-public enum LaunchAtLoginStatus: Sendable {
+public enum LaunchAtLoginStatus: Sendable, Equatable {
     case enabled
     case disabled
     case requiresApproval
@@ -25,6 +25,10 @@ public enum LaunchAtLoginStatus: Sendable {
     public var isEnabled: Bool {
         if case .enabled = self { return true }
         return false
+    }
+
+    public var modalAvailabilityDegraded: Bool {
+        !self.isEnabled
     }
 }
 

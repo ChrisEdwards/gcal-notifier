@@ -19,6 +19,8 @@ public final class MenuController: NSObject {
     private var alertableEvents: [CalendarEvent] = []
     private var conflictingEventIds: Set<String> = []
     private var notificationPermissionDenied: Bool = false
+    private var notificationAuthorizationStatus: NotificationAuthorizationStatus?
+    private var launchAtLoginStatus: LaunchAtLoginStatus = .enabled
     private var setupRequired: Bool = false
 
     // MARK: - Callbacks
@@ -30,6 +32,7 @@ public final class MenuController: NSObject {
     public var onSettings: (() -> Void)?
     public var onQuit: (() -> Void)?
     public var onOpenNotificationSettings: (() -> Void)?
+    public var onOpenLoginItemsSettings: (() -> Void)?
 
     // MARK: - Configuration
 
@@ -89,6 +92,17 @@ public final class MenuController: NSObject {
         self.notificationPermissionDenied = denied
     }
 
+    /// Updates the notification permission status used for reliability diagnostics.
+    public func updateNotificationAuthorizationStatus(_ status: NotificationAuthorizationStatus) {
+        self.notificationAuthorizationStatus = status
+        self.notificationPermissionDenied = status == .denied
+    }
+
+    /// Updates the launch-at-login status used for reliability diagnostics.
+    public func updateLaunchAtLoginStatus(_ status: LaunchAtLoginStatus) {
+        self.launchAtLoginStatus = status
+    }
+
     /// Updates the setup required state.
     public func updateSetupRequired(_ required: Bool) {
         self.setupRequired = required
@@ -100,6 +114,8 @@ public final class MenuController: NSObject {
             events: self.events,
             conflictingEventIds: self.conflictingEventIds,
             notificationPermissionDenied: self.notificationPermissionDenied,
+            notificationAuthorizationStatus: self.notificationAuthorizationStatus,
+            launchAtLoginStatus: self.launchAtLoginStatus,
             setupRequired: self.setupRequired,
             alertableEvents: self.alertableEvents
         )
@@ -150,6 +166,9 @@ public final class MenuController: NSObject {
 
         case .notificationWarning:
             self.createNotificationWarningItem()
+
+        case let .launchAtLoginWarning(status):
+            self.createLaunchAtLoginWarningItem(status: status)
 
         case let .quickJoin(title, event):
             self.createQuickJoinItem(title: title, event: event)
@@ -211,46 +230,6 @@ extension MenuController {
 
         let fullTitle = NSMutableAttributedString()
         fullTitle.append(keyIcon)
-        fullTitle.append(titleAttr)
-        fullTitle.append(subtitleAttr)
-        item.attributedTitle = fullTitle
-
-        return item
-    }
-
-    private func createNotificationWarningItem() -> NSMenuItem {
-        let title = "Notifications disabled"
-        let subtitle = "Alerts won't appear. Click to enable."
-
-        let item = NSMenuItem(
-            title: title,
-            action: #selector(handleOpenNotificationSettings(_:)),
-            keyEquivalent: ""
-        )
-        item.target = self
-
-        // Create attributed title with warning icon and subtitle
-        let warningIcon = NSAttributedString(
-            string: "⚠️ ",
-            attributes: [.font: NSFont.systemFont(ofSize: 13)]
-        )
-        let titleAttr = NSAttributedString(
-            string: title + "\n",
-            attributes: [
-                .font: NSFont.boldSystemFont(ofSize: 13),
-                .foregroundColor: NSColor.systemOrange,
-            ]
-        )
-        let subtitleAttr = NSAttributedString(
-            string: subtitle,
-            attributes: [
-                .font: NSFont.systemFont(ofSize: 11),
-                .foregroundColor: NSColor.secondaryLabelColor,
-            ]
-        )
-
-        let fullTitle = NSMutableAttributedString()
-        fullTitle.append(warningIcon)
         fullTitle.append(titleAttr)
         fullTitle.append(subtitleAttr)
         item.attributedTitle = fullTitle
@@ -341,6 +320,8 @@ extension MenuController {
             #selector(Self.handleQuit(_:))
         case .openNotificationSettings:
             #selector(Self.handleOpenNotificationSettings(_:))
+        case .openLoginItemsSettings:
+            #selector(Self.handleOpenLoginItemsSettings(_:))
         }
 
         let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
@@ -463,5 +444,9 @@ extension MenuController {
 
     @objc func handleOpenNotificationSettings(_: NSMenuItem) {
         self.onOpenNotificationSettings?()
+    }
+
+    @objc func handleOpenLoginItemsSettings(_: NSMenuItem) {
+        self.onOpenLoginItemsSettings?()
     }
 }

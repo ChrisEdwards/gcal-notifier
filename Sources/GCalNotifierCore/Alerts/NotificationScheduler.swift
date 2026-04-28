@@ -161,6 +161,7 @@ extension NotificationScheduler: DurableAlertNotificationScheduler {
 
         do {
             try await self.center.add(request)
+            AlertDiagnostics.log(.osNotificationScheduled, alert: alert)
         } catch {
             Logger.alerts.error(
                 "Failed to schedule durable notification for alert \(alert.id): \(error.localizedDescription)"

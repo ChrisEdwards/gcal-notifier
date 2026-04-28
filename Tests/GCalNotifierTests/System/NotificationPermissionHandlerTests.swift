@@ -107,6 +107,7 @@ struct NotificationPermissionHandlerTests {
 
         #expect(handler.permissionDenied)
         #expect(!handler.isAuthorized)
+        #expect(handler.durableDeliveryDegraded)
     }
 
     @Test("isAuthorized is true when status is authorized")
@@ -119,6 +120,7 @@ struct NotificationPermissionHandlerTests {
 
         #expect(handler.isAuthorized)
         #expect(!handler.permissionDenied)
+        #expect(!handler.durableDeliveryDegraded)
     }
 
     @Test("isAuthorized is true when status is provisional")

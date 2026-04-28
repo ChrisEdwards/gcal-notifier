@@ -58,6 +58,11 @@ public final class NotificationPermissionHandler {
             || self.authorizationStatus == .ephemeral
     }
 
+    /// Whether durable OS notification delivery is degraded for the current permission state.
+    public var durableDeliveryDegraded: Bool {
+        !self.isAuthorized
+    }
+
     /// Whether permission has not been determined yet.
     public var isNotDetermined: Bool {
         self.authorizationStatus == .notDetermined

@@ -133,10 +133,18 @@ struct GeneralTab: View {
         let binding = Binding(get: { self.launchAtLoginStatus.isEnabled },
                               set: { self.launchAtLoginStatus = LaunchAtLoginManager.shared.setEnabled($0) })
         Toggle("Launch at login", isOn: binding)
-        if case .requiresApproval = self.launchAtLoginStatus {
+        if case .disabled = self.launchAtLoginStatus {
             HStack {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
-                Text("Approval required").font(.caption).foregroundStyle(.secondary)
+                Text("Modal alerts after login or reboot are degraded").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Open Settings") { LaunchAtLoginManager.shared.openLoginItemsSettings() }
+                    .buttonStyle(.link).font(.caption).pointerCursor()
+            }
+        } else if case .requiresApproval = self.launchAtLoginStatus {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                Text("Approve login item for modal alerts after reboot").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Open Settings") { LaunchAtLoginManager.shared.openLoginItemsSettings() }
                     .buttonStyle(.link).font(.caption).pointerCursor()

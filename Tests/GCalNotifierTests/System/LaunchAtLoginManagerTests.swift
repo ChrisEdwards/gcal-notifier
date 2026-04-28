@@ -48,6 +48,24 @@ struct LaunchAtLoginStatusTests {
         #expect(status.isEnabled == false)
     }
 
+    @Test("disabled status degrades modal availability")
+    func disabledStatusDegradesModalAvailability() {
+        let status = LaunchAtLoginStatus.disabled
+        #expect(status.modalAvailabilityDegraded)
+    }
+
+    @Test("requiresApproval status degrades modal availability")
+    func requiresApprovalStatusDegradesModalAvailability() {
+        let status = LaunchAtLoginStatus.requiresApproval
+        #expect(status.modalAvailabilityDegraded)
+    }
+
+    @Test("enabled status does not degrade modal availability")
+    func enabledStatusDoesNotDegradeModalAvailability() {
+        let status = LaunchAtLoginStatus.enabled
+        #expect(!status.modalAvailabilityDegraded)
+    }
+
     @Test("error status returns false for isEnabled")
     func errorStatusIsEnabled() {
         let status = LaunchAtLoginStatus.error("Test error")

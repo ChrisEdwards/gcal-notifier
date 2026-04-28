@@ -221,6 +221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuController.onOpenNotificationSettings = { [weak self] in
             self?.notificationPermissionHandler.openNotificationSettings()
         }
+        menuController.onOpenLoginItemsSettings = {
+            LaunchAtLoginManager.shared.openLoginItemsSettings()
+        }
         menuController.onQuit = {
             NSApp.terminate(nil)
         }
@@ -235,14 +238,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.menuController = menuController
-
-        self.notificationPermissionHandler.setDelegate(self)
-        self.notificationPermissionHandler.startMonitoring()
+        self.startReliabilityDiagnosticsMonitoring()
 
         // Create status item controller
         let statusItemController = StatusItemController()
-        statusItemController.onMenuWillPrepare = { [weak menuController] in
+        statusItemController.onMenuWillPrepare = { [weak self, weak menuController] in
             await menuController?.loadEventsFromCache()
+            self?.refreshReliabilityDiagnostics()
         }
         statusItemController.onMenuWillOpen = { [weak menuController] in
             menuController?.buildMenu() ?? NSMenu()
@@ -254,12 +256,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.statusItemController = statusItemController
+    }
 
+    private func startReliabilityDiagnosticsMonitoring() {
+        self.notificationPermissionHandler.setDelegate(self)
+        self.notificationPermissionHandler.startMonitoring()
         Task { [weak self] in
             guard let self else { return }
             let status = await self.notificationPermissionHandler.checkPermission()
-            self.menuController?.updateNotificationPermissionDenied(status == .denied)
+            self.menuController?.updateNotificationAuthorizationStatus(status)
+            self.refreshReliabilityDiagnostics()
         }
+    }
+
+    private func refreshReliabilityDiagnostics() {
+        self.menuController?.updateNotificationAuthorizationStatus(
+            self.notificationPermissionHandler.authorizationStatus
+        )
+        self.menuController?.updateLaunchAtLoginStatus(LaunchAtLoginManager.shared.checkStatus())
     }
 
     func applicationWillTerminate(_: Notification) {
@@ -411,7 +425,7 @@ extension AppDelegate: FirstLaunchHandlerDelegate {
 // MARK: - NotificationPermissionHandlerDelegate
 
 extension AppDelegate: NotificationPermissionHandlerDelegate {
-    func permissionStatusDidChange(_: NotificationPermissionHandler, isGranted: Bool) async {
-        self.menuController?.updateNotificationPermissionDenied(!isGranted)
+    func permissionStatusDidChange(_: NotificationPermissionHandler, isGranted _: Bool) async {
+        self.refreshReliabilityDiagnostics()
     }
 }
