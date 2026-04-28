@@ -33,12 +33,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settingsStore = SettingsStore()
 
     /// Alert window controller for meeting alerts
-    private var alertWindowController: AlertWindowController?
+    var alertWindowController: AlertWindowController?
 
     var alertEngine: AlertEngine?
 
     /// Alert delivery implementation
-    private var alertDelivery: WindowAlertDelivery?
+    var alertDelivery: WindowAlertDelivery?
+
+    /// Readiness gate that must complete before sync is allowed to reconcile alerts.
+    let alertReadinessGate = AlertReadinessGate<AlertEngine>()
 
     /// OAuth provider for Google authentication
     private let oauthProvider = GoogleOAuthProvider()
@@ -47,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var appStateStore: AppStateStore?
 
     /// Scheduled alerts persistence
-    private var alertsStore: ScheduledAlertsStore?
+    var alertsStore: ScheduledAlertsStore?
 
     /// Calendar sync engine - orchestrates sync operations (internal for extension access)
     var syncEngine: SyncEngine?
@@ -319,86 +322,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - Alert Engine
-
-extension AppDelegate {
-    private func setupAlertEngine() {
-        guard let eventCache, let alertsStore, let alertWindowController else {
-            Logger.app.warning("AlertEngine not created: missing dependencies")
-            return
-        }
-        Task {
-            // DispatchAlertScheduler drives in-process modal delivery. NotificationScheduler
-            // also installs visible Stage 2 OS notifications as a durable fallback path.
-            let alertScheduler = DispatchAlertScheduler()
-            let notificationScheduler = await NotificationScheduler()
-            let delivery = WindowAlertDelivery(
-                windowController: alertWindowController,
-                eventCache: eventCache,
-                settings: self.settingsStore,
-                scheduler: notificationScheduler
-            )
-
-            // Update status bar when an alert is delivered
-            delivery.onAlertDelivered = { [weak self] in
-                Task { @MainActor in
-                    self?.statusItemController?.updateDisplay()
-                }
-            }
-
-            self.alertDelivery = delivery
-
-            let engine = AlertEngine(
-                alertsStore: alertsStore,
-                scheduler: alertScheduler,
-                delivery: delivery,
-                durableNotificationScheduler: notificationScheduler
-            )
-            await self.configureAlertEngineProviders(engine)
-            self.alertEngine = engine
-            await delivery.setAlertEngine(engine)
-
-            do {
-                try await engine.reconcileOnRelaunch()
-                Logger.app.info("AlertEngine reconciled on relaunch")
-            } catch {
-                Logger.app.error("Failed to reconcile alerts: \(error.localizedDescription)")
-            }
-            Logger.app.info("AlertEngine initialized successfully")
-        }
-    }
-
-    private func configureAlertEngineProviders(_ engine: AlertEngine) async {
-        await self.configureBackToBackProvider(engine)
-        await self.configurePresentationModeProvider(engine)
-    }
-
-    private func configureBackToBackProvider(_ engine: AlertEngine) async {
-        guard let syncEngine else { return }
-        await engine.setBackToBackContextProvider { alert in
-            guard let current = await syncEngine.currentMeeting() else {
-                return .none
-            }
-            let next = await syncEngine.nextBackToBackMeeting()
-            let isBackToBack = next?.qualifiedId == alert.eventId
-            return BackToBackAlertContext(
-                isInMeeting: true,
-                isBackToBackSituation: isBackToBack,
-                currentMeeting: current
-            )
-        }
-    }
-
-    private func configurePresentationModeProvider(_ engine: AlertEngine) async {
-        let settingsStore = self.settingsStore
-        await engine.setPresentationModeProvider {
-            guard settingsStore.suppressDuringScreenShare else { return nil }
-            let state = await MainActor.run { PresentationModeDetector.shared.detect() }
-            return state.alertDowngradeReason
-        }
-    }
-}
-
 // MARK: - Authentication Handling
 
 extension AppDelegate {
@@ -411,6 +334,14 @@ extension AppDelegate {
     func handleAuthenticationCompleted(showSetupCompletion: Bool = false) async {
         guard self.syncEngine != nil else {
             Logger.app.warning("SyncEngine not available, cannot start sync after authentication")
+            return
+        }
+        do {
+            _ = try await self.requireAlertEngineReady()
+        } catch {
+            Logger.app.error(
+                "AlertEngine not ready after authentication; initial sync blocked: \(error.localizedDescription)"
+            )
             return
         }
 
@@ -437,7 +368,7 @@ extension AppDelegate {
         self.stopSyncPolling()
         self.cachedCalendarIds = []
 
-        if let alertEngine {
+        if let alertEngine = try? await self.requireAlertEngineReady() {
             await alertEngine.reconcile(newEvents: [], settings: self.settingsStore)
         }
 

@@ -28,7 +28,7 @@ extension AppDelegate {
             if !result.failedCalendars.isEmpty {
                 Logger.app.warning("Sync failed for \(result.failedCalendars.count) calendars")
             }
-            await self.scheduleAlertsForEvents(result.events)
+            try await self.scheduleAlertsForEvents(result.events)
 
             // Update status bar with new events
             await self.statusItemController?.loadEventsFromCache()
@@ -79,12 +79,13 @@ extension AppDelegate {
     private func reconcileAlertsFromCachedEvents(
         changedSetting: SettingsStore.AlertAffectingSetting
     ) async {
-        guard let eventCache, let alertEngine else {
-            Logger.app.warning("Cannot reconcile alert settings change: alert dependencies are unavailable")
+        guard let eventCache else {
+            Logger.app.error("Cannot reconcile alert settings change: event cache is unavailable")
             return
         }
 
         do {
+            let alertEngine = try await self.requireAlertEngineReady()
             let events = try await eventCache.load()
             Logger.app.info(
                 "Reconciling alerts from cache after setting change: \(String(describing: changedSetting))"
@@ -142,7 +143,7 @@ extension AppDelegate {
             // Update last full sync time
             try await appStateStore.setLastFullSync(Date())
 
-            await self.scheduleAlertsForEvents(result.events)
+            try await self.scheduleAlertsForEvents(result.events)
 
             // Update status bar with new events
             await self.statusItemController?.loadEventsFromCache()
@@ -199,12 +200,8 @@ extension AppDelegate {
     }
 
     /// Reconciles alerts for the given events using the AlertEngine.
-    func scheduleAlertsForEvents(_ events: [CalendarEvent]) async {
-        guard let alertEngine else {
-            Logger.app.warning("AlertEngine not available, cannot schedule alerts")
-            return
-        }
-
+    func scheduleAlertsForEvents(_ events: [CalendarEvent]) async throws {
+        let alertEngine = try await self.requireAlertEngineReady()
         Logger.app.info("Reconciling alerts for \(events.count) events")
         await alertEngine.reconcile(newEvents: events, settings: self.settingsStore)
 

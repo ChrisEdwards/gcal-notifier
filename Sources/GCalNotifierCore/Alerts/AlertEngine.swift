@@ -170,10 +170,16 @@ public actor AlertEngine {
         do {
             let persistedAlerts = try await alertsStore.load()
             let now = self.dateProvider()
-            for alert in persistedAlerts where alert.scheduledFireTime > now {
+            let recoverableAlerts = persistedAlerts.filter { self.isRelevantForAlertContext($0) }
+            self.alerts = Dictionary(uniqueKeysWithValues: recoverableAlerts.map { ($0.id, $0) })
+
+            for alert in recoverableAlerts where self.shouldRestoreScheduledEffects(for: alert, now: now) {
                 self.alerts[alert.id] = alert
                 await self.scheduleTimer(for: alert)
                 await self.scheduleDurableNotificationIfNeeded(for: alert)
+            }
+            if recoverableAlerts.count != persistedAlerts.count {
+                await self.persistAlerts()
             }
         } catch {
             self.isInitialized = false
@@ -404,6 +410,16 @@ extension AlertEngine {
 
     private func isRelevantForAlertContext(_ alert: ScheduledAlert) -> Bool {
         self.dateProvider() < alert.eventEndTime
+    }
+
+    private func shouldRestoreScheduledEffects(for alert: ScheduledAlert, now: Date) -> Bool {
+        guard alert.scheduledFireTime > now else { return false }
+        switch alert.stage {
+        case .stage1:
+            return alert.scheduledFireTime < (self.stage2FireTime(for: alert) ?? alert.eventStartTime)
+        case .stage2:
+            return alert.scheduledFireTime < alert.eventEndTime
+        }
     }
 
     private func checkPresentationModeSuppression() async -> AlertDowngradeReason? {
