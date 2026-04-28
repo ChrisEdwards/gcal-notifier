@@ -39,6 +39,7 @@ public final class NotificationPermissionHandler {
 
     private let logger = Logger.app
     private let notificationCenter: any NotificationCenterProtocol
+    private let workspaceOpen: @MainActor (URL) -> Bool
     private weak var delegate: NotificationPermissionHandlerDelegate?
 
     // MARK: - State
@@ -76,11 +77,16 @@ public final class NotificationPermissionHandler {
     /// Creates a handler with the default system notification center.
     public init() {
         self.notificationCenter = SystemNotificationCenter()
+        self.workspaceOpen = { NSWorkspace.shared.open($0) }
     }
 
     /// Creates a handler with a custom notification center (for testing).
-    public init(notificationCenter: any NotificationCenterProtocol) {
+    public init(
+        notificationCenter: any NotificationCenterProtocol,
+        workspaceOpen: @escaping @MainActor (URL) -> Bool = { _ in true }
+    ) {
         self.notificationCenter = notificationCenter
+        self.workspaceOpen = workspaceOpen
     }
 
     // MARK: - Public API
@@ -120,6 +126,16 @@ public final class NotificationPermissionHandler {
             await self.checkPermission()
             return false
         }
+    }
+
+    /// Requests notification authorization only when macOS has not recorded a choice yet.
+    /// Returns whether the current or resulting state allows notifications.
+    public func requestAuthorizationIfNotDetermined() async -> Bool {
+        let status = await self.checkPermission()
+        guard status == .notDetermined else {
+            return self.isAuthorized
+        }
+        return await self.requestAuthorization()
     }
 
     /// Starts periodic permission monitoring.
@@ -162,24 +178,25 @@ public final class NotificationPermissionHandler {
 
     /// Opens System Settings to the notification preferences for this app.
     public func openNotificationSettings() {
-        guard let bundleId = Bundle.main.bundleIdentifier else {
-            self.logger.error("Failed to get bundle identifier")
+        for url in self.notificationSettingsURLs() where self.workspaceOpen(url) {
+            self.logger.info("Opened notification settings: \(url.absoluteString)")
             return
         }
 
-        // macOS 13+ uses System Settings, older versions use System Preferences
-        // The URL scheme opens the Notifications pane for the specific app
-        let urlString = "x-apple.systempreferences:com.apple.preference.notifications?\(bundleId)"
+        self.logger.error("Failed to open notification settings")
+    }
 
-        if let url = URL(string: urlString) {
-            NSWorkspace.shared.open(url)
-            self.logger.info("Opened notification settings for app")
-        } else {
-            // Fallback: open general notification settings
-            if let fallbackURL = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
-                NSWorkspace.shared.open(fallbackURL)
-                self.logger.info("Opened general notification settings")
-            }
+    private func notificationSettingsURLs() -> [URL] {
+        var urlStrings: [String] = []
+        if let bundleId = Bundle.main.bundleIdentifier {
+            urlStrings.append("x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(bundleId)")
+            urlStrings.append("x-apple.systempreferences:com.apple.preference.notifications?\(bundleId)")
         }
+        urlStrings.append(contentsOf: [
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+            "x-apple.systempreferences:com.apple.preference.notifications",
+            "x-apple.systempreferences:com.apple.preferences",
+        ])
+        return urlStrings.compactMap { URL(string: $0) }
     }
 }

@@ -219,7 +219,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.showSettingsWindow()
         }
         menuController.onOpenNotificationSettings = { [weak self] in
-            self?.notificationPermissionHandler.openNotificationSettings()
+            Task { @MainActor [weak self] in
+                await self?.resolveNotificationWarningAction()
+            }
         }
         menuController.onOpenLoginItemsSettings = {
             LaunchAtLoginManager.shared.openLoginItemsSettings()
@@ -274,6 +276,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.notificationPermissionHandler.authorizationStatus
         )
         self.menuController?.updateLaunchAtLoginStatus(LaunchAtLoginManager.shared.checkStatus())
+    }
+
+    private func resolveNotificationWarningAction() async {
+        let status = await self.notificationPermissionHandler.checkPermission()
+        Logger.app.info("Notification reliability warning selected: \(String(describing: status))")
+        if status == .notDetermined {
+            let granted = await self.notificationPermissionHandler.requestAuthorizationIfNotDetermined()
+            if !granted {
+                self.notificationPermissionHandler.openNotificationSettings()
+            }
+        } else {
+            self.notificationPermissionHandler.openNotificationSettings()
+        }
+        self.refreshReliabilityDiagnostics()
     }
 
     func applicationWillTerminate(_: Notification) {

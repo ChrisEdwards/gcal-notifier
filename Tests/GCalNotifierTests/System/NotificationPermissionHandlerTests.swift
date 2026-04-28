@@ -214,6 +214,66 @@ struct NotificationPermissionHandlerTests {
         #expect(!granted)
     }
 
+    @Test("requestAuthorizationIfNotDetermined asks macOS before app appears in settings")
+    func requestAuthorizationIfNotDeterminedRequestsAuthorization() async {
+        let mockCenter = MockPermissionNotificationCenter()
+        mockCenter.authorizationStatus = .notDetermined
+        mockCenter.requestAuthorizationResult = true
+
+        let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
+        let granted = await handler.requestAuthorizationIfNotDetermined()
+
+        #expect(granted)
+        #expect(mockCenter.requestAuthorizationCalled)
+    }
+
+    @Test("requestAuthorizationIfNotDetermined skips prompt when already denied")
+    func requestAuthorizationIfNotDeterminedSkipsPromptWhenDenied() async {
+        let mockCenter = MockPermissionNotificationCenter()
+        mockCenter.authorizationStatus = .denied
+
+        let handler = NotificationPermissionHandler(notificationCenter: mockCenter)
+        let granted = await handler.requestAuthorizationIfNotDetermined()
+
+        #expect(!granted)
+        #expect(!mockCenter.requestAuthorizationCalled)
+    }
+
+    @Test("openNotificationSettings opens the first available settings URL")
+    func openNotificationSettingsOpensFirstAvailableURL() {
+        let mockCenter = MockPermissionNotificationCenter()
+        nonisolated(unsafe) var openedURLs: [URL] = []
+        let handler = NotificationPermissionHandler(
+            notificationCenter: mockCenter,
+            workspaceOpen: { url in
+                openedURLs.append(url)
+                return true
+            }
+        )
+
+        handler.openNotificationSettings()
+
+        #expect(openedURLs.count == 1)
+        #expect(openedURLs.first?.absoluteString.contains("systempreferences") == true)
+    }
+
+    @Test("openNotificationSettings tries fallback URL when first open fails")
+    func openNotificationSettingsTriesFallbackURL() {
+        let mockCenter = MockPermissionNotificationCenter()
+        nonisolated(unsafe) var openedURLs: [URL] = []
+        let handler = NotificationPermissionHandler(
+            notificationCenter: mockCenter,
+            workspaceOpen: { url in
+                openedURLs.append(url)
+                return openedURLs.count > 1
+            }
+        )
+
+        handler.openNotificationSettings()
+
+        #expect(openedURLs.count == 2)
+    }
+
     // MARK: - Monitoring
 
     @Test("startMonitoring can be called")

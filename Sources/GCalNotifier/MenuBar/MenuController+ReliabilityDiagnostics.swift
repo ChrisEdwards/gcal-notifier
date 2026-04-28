@@ -3,7 +3,7 @@ import AppKit
 extension MenuController {
     func createNotificationWarningItem() -> NSMenuItem {
         let title = "Durable alerts degraded"
-        let subtitle = "Enable notifications so OS alerts can appear."
+        let subtitle = "Click to allow notifications or open settings."
 
         let item = NSMenuItem(
             title: title,
