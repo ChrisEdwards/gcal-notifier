@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Core Services
 
     /// Local storage for calendar events - shared across components
-    private var eventCache: EventCache?
+    var eventCache: EventCache?
 
     let settingsStore = SettingsStore()
 
@@ -70,6 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Task for automatic background sync polling (internal for extension access)
     var syncPollingTask: Task<Void, Never>?
 
+    /// Task for reconciling cached alerts after alert-affecting settings change.
+    var alertSettingsReconcileTask: Task<Void, Never>?
+
     /// Tracks last known auth state to detect transitions
     private var lastKnownAuthState: AuthState = .unconfigured
 
@@ -101,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.setupSyncEngine()
         self.alertWindowController = AlertWindowController()
         self.setupAlertEngine()
+        self.setupAlertSettingsReconciliation()
         self.setupOAuthAndSync()
         self.sleepWakeHandler.setDelegate(self)
         self.sleepWakeHandler.startMonitoring()
@@ -266,6 +270,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Stop sync polling
         self.syncPollingTask?.cancel()
         self.syncPollingTask = nil
+
+        // Stop settings-triggered reconciliation
+        self.alertSettingsReconcileTask?.cancel()
+        self.alertSettingsReconcileTask = nil
+        self.settingsStore.setAlertAffectingSettingsChangeHandler(nil)
 
         // Stop sleep/wake monitoring
         self.sleepWakeHandler.stopMonitoring()
@@ -473,27 +482,5 @@ extension AppDelegate: FirstLaunchHandlerDelegate {
 extension AppDelegate: NotificationPermissionHandlerDelegate {
     func permissionStatusDidChange(_: NotificationPermissionHandler, isGranted: Bool) async {
         self.menuController?.updateNotificationPermissionDenied(!isGranted)
-    }
-}
-
-// MARK: - SleepWakeHandlerDelegate
-
-extension AppDelegate: SleepWakeHandlerDelegate {
-    nonisolated func sleepWakeHandlerDidWake(_: SleepWakeHandler) async {
-        let engine = await MainActor.run { self.alertEngine }
-        if let engine {
-            _ = await engine.checkForMissedAlerts()
-        }
-
-        Task { @MainActor in
-            Logger.app.info("System woke - syncing and rescheduling alerts")
-            await self.performSync()
-        }
-    }
-
-    nonisolated func sleepWakeHandlerWillSleep(_: SleepWakeHandler) async {
-        await MainActor.run {
-            Logger.app.info("System sleeping - timers may pause")
-        }
     }
 }

@@ -58,6 +58,46 @@ extension AppDelegate {
         Logger.app.info("Stopped sync polling")
     }
 
+    /// Starts listening for alert-affecting settings changes and reconciles from cached events.
+    func setupAlertSettingsReconciliation() {
+        self.settingsStore.setAlertAffectingSettingsChangeHandler { [weak self] setting in
+            Task { @MainActor [weak self] in
+                self?.enqueueAlertSettingsReconciliation(changedSetting: setting)
+            }
+        }
+    }
+
+    private func enqueueAlertSettingsReconciliation(
+        changedSetting: SettingsStore.AlertAffectingSetting
+    ) {
+        self.alertSettingsReconcileTask?.cancel()
+        self.alertSettingsReconcileTask = Task { @MainActor [weak self] in
+            await self?.reconcileAlertsFromCachedEvents(changedSetting: changedSetting)
+        }
+    }
+
+    private func reconcileAlertsFromCachedEvents(
+        changedSetting: SettingsStore.AlertAffectingSetting
+    ) async {
+        guard let eventCache, let alertEngine else {
+            Logger.app.warning("Cannot reconcile alert settings change: alert dependencies are unavailable")
+            return
+        }
+
+        do {
+            let events = try await eventCache.load()
+            Logger.app.info(
+                "Reconciling alerts from cache after setting change: \(String(describing: changedSetting))"
+            )
+            await alertEngine.reconcile(newEvents: events, settings: self.settingsStore)
+            await self.statusItemController?.loadEventsFromCache()
+        } catch {
+            Logger.app.error(
+                "Failed to reconcile alerts from cached events after settings change: \(error.localizedDescription)"
+            )
+        }
+    }
+
     /// Schedules the next sync poll after the specified interval.
     private func scheduleSyncPolling(interval: TimeInterval) {
         // Cancel any existing polling task

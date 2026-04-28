@@ -1,9 +1,20 @@
 import Foundation
+import Observation
 
 /// Centralized settings store using UserDefaults with Observable conformance.
 /// Provides reactive access to user preferences for alert timing, sounds, filtering, and more.
 @Observable
 public final class SettingsStore: @unchecked Sendable {
+    public typealias AlertAffectingSettingsChangeHandler = (AlertAffectingSetting) -> Void
+
+    public enum AlertAffectingSetting: Sendable, Equatable {
+        case alertStage1Minutes
+        case alertStage2Minutes
+        case enabledCalendars
+        case blockedKeywords
+        case forceAlertKeywords
+    }
+
     // MARK: - UserDefaults Keys
 
     private enum Keys {
@@ -24,6 +35,7 @@ public final class SettingsStore: @unchecked Sendable {
     // MARK: - Properties
 
     private let defaults: UserDefaults
+    @ObservationIgnored private var alertAffectingSettingsChangeHandler: AlertAffectingSettingsChangeHandler?
 
     // MARK: - Alert Timing (0 = disabled)
 
@@ -33,9 +45,12 @@ public final class SettingsStore: @unchecked Sendable {
             return self.defaults.object(forKey: Keys.alertStage1Minutes) as? Int ?? 10
         }
         set {
+            let oldValue = self.defaults.object(forKey: Keys.alertStage1Minutes) as? Int ?? 10
+            guard oldValue != newValue else { return }
             withMutation(keyPath: \.alertStage1Minutes) {
                 self.defaults.set(newValue, forKey: Keys.alertStage1Minutes)
             }
+            self.notifyAlertAffectingSettingsChanged(.alertStage1Minutes)
         }
     }
 
@@ -45,9 +60,12 @@ public final class SettingsStore: @unchecked Sendable {
             return self.defaults.object(forKey: Keys.alertStage2Minutes) as? Int ?? 2
         }
         set {
+            let oldValue = self.defaults.object(forKey: Keys.alertStage2Minutes) as? Int ?? 2
+            guard oldValue != newValue else { return }
             withMutation(keyPath: \.alertStage2Minutes) {
                 self.defaults.set(newValue, forKey: Keys.alertStage2Minutes)
             }
+            self.notifyAlertAffectingSettingsChanged(.alertStage2Minutes)
         }
     }
 
@@ -98,9 +116,12 @@ public final class SettingsStore: @unchecked Sendable {
             return self.loadStringArray(forKey: Keys.enabledCalendars) ?? []
         }
         set {
+            let oldValue = self.loadStringArray(forKey: Keys.enabledCalendars) ?? []
+            guard oldValue != newValue else { return }
             withMutation(keyPath: \.enabledCalendars) {
                 self.saveStringArray(newValue, forKey: Keys.enabledCalendars)
             }
+            self.notifyAlertAffectingSettingsChanged(.enabledCalendars)
         }
     }
 
@@ -111,9 +132,12 @@ public final class SettingsStore: @unchecked Sendable {
             return self.loadStringArray(forKey: Keys.blockedKeywords) ?? []
         }
         set {
+            let oldValue = self.loadStringArray(forKey: Keys.blockedKeywords) ?? []
+            guard oldValue != newValue else { return }
             withMutation(keyPath: \.blockedKeywords) {
                 self.saveStringArray(newValue, forKey: Keys.blockedKeywords)
             }
+            self.notifyAlertAffectingSettingsChanged(.blockedKeywords)
         }
     }
 
@@ -124,9 +148,12 @@ public final class SettingsStore: @unchecked Sendable {
             return self.loadStringArray(forKey: Keys.forceAlertKeywords) ?? ["Interview", "IMPORTANT"]
         }
         set {
+            let oldValue = self.loadStringArray(forKey: Keys.forceAlertKeywords) ?? ["Interview", "IMPORTANT"]
+            guard oldValue != newValue else { return }
             withMutation(keyPath: \.forceAlertKeywords) {
                 self.saveStringArray(newValue, forKey: Keys.forceAlertKeywords)
             }
+            self.notifyAlertAffectingSettingsChanged(.forceAlertKeywords)
         }
     }
 
@@ -201,7 +228,19 @@ public final class SettingsStore: @unchecked Sendable {
         self.defaults = defaults
     }
 
+    // MARK: - Change Notifications
+
+    public func setAlertAffectingSettingsChangeHandler(
+        _ handler: AlertAffectingSettingsChangeHandler?
+    ) {
+        self.alertAffectingSettingsChangeHandler = handler
+    }
+
     // MARK: - Private Helpers
+
+    private func notifyAlertAffectingSettingsChanged(_ setting: AlertAffectingSetting) {
+        self.alertAffectingSettingsChangeHandler?(setting)
+    }
 
     private func loadStringArray(forKey key: String) -> [String]? {
         guard let jsonString = defaults.string(forKey: key),

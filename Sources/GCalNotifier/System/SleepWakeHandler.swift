@@ -110,3 +110,25 @@ public final class SleepWakeHandler {
         }
     }
 }
+
+// MARK: - AppDelegate SleepWakeHandlerDelegate
+
+extension AppDelegate: SleepWakeHandlerDelegate {
+    nonisolated func sleepWakeHandlerDidWake(_: SleepWakeHandler) async {
+        let engine = await MainActor.run { self.alertEngine }
+        if let engine {
+            _ = await engine.checkForMissedAlerts()
+        }
+
+        Task { @MainActor in
+            Logger.app.info("System woke - syncing and rescheduling alerts")
+            await self.performSync()
+        }
+    }
+
+    nonisolated func sleepWakeHandlerWillSleep(_: SleepWakeHandler) async {
+        await MainActor.run {
+            Logger.app.info("System sleeping - timers may pause")
+        }
+    }
+}
