@@ -46,7 +46,33 @@ struct AlertEngineStage2ModalTests {
         try await fireFirstStage2Handler(context)
 
         let delivered = await context.delivery.deliveredAlerts
+        let remaining = await context.engine.scheduledAlerts
+        let removedDeliveredNotifications = await context.durableScheduler.removedDeliveredNotificationIds
         #expect(delivered.isEmpty)
+        #expect(remaining.contains { $0.id == context.alertId })
+        #expect(removedDeliveredNotifications.isEmpty)
+    }
+
+    @Test("Wake reconciliation preserves delivered notification for relevant past alert")
+    func wakeReconciliationPreservesDeliveredNotificationForRelevantPastAlert() async throws {
+        nonisolated(unsafe) var currentTime = stage2ModalBaseTime
+        let context = try makeStage2ModalContext(dateProvider: { currentTime })
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        await context.scheduler.reset()
+        await context.durableScheduler.reset()
+
+        currentTime = context.stage2FireTime.addingTimeInterval(60)
+        await context.engine.reconcile(newEvents: [context.event], settings: context.settings)
+
+        let remaining = await context.engine.scheduledAlerts
+        #expect(remaining.contains { $0.id == context.alertId })
+        #expect(await context.scheduler.cancelledAlertIds.isEmpty)
+        #expect(await context.scheduler.scheduledAlerts.isEmpty)
+        #expect(await context.durableScheduler.cancelledNotificationIds.isEmpty)
+        #expect(await context.durableScheduler.removedDeliveredNotificationIds.isEmpty)
+        #expect(await context.durableScheduler.scheduledNotifications.isEmpty)
     }
 
     @Test("Acknowledged Stage 2 local trigger no-ops")

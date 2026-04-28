@@ -19,9 +19,8 @@ public protocol SleepWakeHandlerDelegate: AnyObject, Sendable {
 /// Handles system sleep and wake events for proper recovery.
 ///
 /// When the system wakes from sleep, this handler:
-/// 1. Checks for missed alerts that should have fired during sleep
-/// 2. Triggers an immediate calendar sync
-/// 3. Checks for time zone changes (via delegate)
+/// 1. Triggers an immediate calendar sync
+/// 2. Lets alert reconciliation mirror the desired state into OS notifications and local modal triggers
 ///
 /// ## Usage
 /// ```swift
@@ -111,24 +110,41 @@ public final class SleepWakeHandler {
     }
 }
 
+// MARK: - WakeRecoveryCoordinator
+
+/// Coordinates wake recovery without reconstructing missed exact-time modal delivery.
+struct WakeRecoveryCoordinator: Sendable {
+    private let syncAndReconcile: @MainActor @Sendable () async -> Void
+
+    init(syncAndReconcile: @escaping @MainActor @Sendable () async -> Void) {
+        self.syncAndReconcile = syncAndReconcile
+    }
+
+    @MainActor
+    func recoverFromWake() async {
+        Logger.app.info("System woke - syncing and reconciling alerts")
+        await self.syncAndReconcile()
+    }
+}
+
 // MARK: - AppDelegate SleepWakeHandlerDelegate
 
 extension AppDelegate: SleepWakeHandlerDelegate {
     nonisolated func sleepWakeHandlerDidWake(_: SleepWakeHandler) async {
-        let engine = await MainActor.run { self.alertEngine }
-        if let engine {
-            _ = await engine.checkForMissedAlerts()
-        }
-
-        Task { @MainActor in
-            Logger.app.info("System woke - syncing and rescheduling alerts")
-            await self.performSync()
-        }
+        await self.recoverFromSystemWake()
     }
 
     nonisolated func sleepWakeHandlerWillSleep(_: SleepWakeHandler) async {
         await MainActor.run {
             Logger.app.info("System sleeping - timers may pause")
         }
+    }
+
+    @MainActor
+    private func recoverFromSystemWake() async {
+        let recovery = WakeRecoveryCoordinator {
+            await self.performSync()
+        }
+        await recovery.recoverFromWake()
     }
 }

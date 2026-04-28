@@ -22,6 +22,14 @@ private final class MockSleepWakeDelegate: SleepWakeHandlerDelegate {
     }
 }
 
+private actor WakeRecoverySpy {
+    private(set) var syncCount = 0
+
+    func syncAndReconcile() {
+        self.syncCount += 1
+    }
+}
+
 // MARK: - Tests
 
 @Suite("SleepWakeHandler Tests")
@@ -79,5 +87,17 @@ struct SleepWakeHandlerTests {
         handler.setDelegate(delegate)
         handler.setDelegate(nil)
         // Should not crash
+    }
+
+    @Test("wake recovery performs sync reconciliation once")
+    func wakeRecoveryPerformsSyncReconciliationOnce() async {
+        let spy = WakeRecoverySpy()
+        let recovery = WakeRecoveryCoordinator {
+            await spy.syncAndReconcile()
+        }
+
+        await recovery.recoverFromWake()
+
+        #expect(await spy.syncCount == 1)
     }
 }
