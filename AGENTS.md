@@ -12,6 +12,22 @@ Treat “never delete files without permission” as a hard invariant.
 
 ---
 
+### STANDARD APP BUILD/RUN EXCEPTION
+
+The standard app launch workflow is explicitly allowed to recreate generated app bundles:
+
+```bash
+make start
+./Scripts/compile_and_run.sh
+make package
+```
+
+These commands may stop running `GCalNotifier` processes and rebuild generated bundle contents under `.build/` or `dist/`.
+This exception applies only to the repository's standard app build/package/run scripts and their generated artifacts.
+It does not permit arbitrary deletion, source deletion, `git clean`, `git reset --hard`, or unrelated filesystem cleanup.
+
+---
+
 ### IRREVERSIBLE GIT & FILESYSTEM ACTIONS
 
 Absolutely forbidden unless I give the **exact command and explicit approval** in the same message:
