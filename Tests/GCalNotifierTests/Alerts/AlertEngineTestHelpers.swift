@@ -1,8 +1,215 @@
 import Foundation
 import Testing
+@preconcurrency import UserNotifications
 @testable import GCalNotifierCore
 
 // MARK: - Mock Dependencies
+
+struct CapturedNotificationRequest: Sendable {
+    let identifier: String
+    let title: String
+    let body: String
+    let categoryIdentifier: String
+    let soundIsNil: Bool
+    let isTimeSensitive: Bool
+    let userInfo: [String: String]
+    let triggerYear: Int?
+    let triggerMonth: Int?
+    let triggerDay: Int?
+    let triggerHour: Int?
+    let triggerMinute: Int?
+    let triggerSecond: Int?
+    let triggerRepeats: Bool?
+
+    init(from request: UNNotificationRequest) {
+        self.identifier = request.identifier
+        self.title = request.content.title
+        self.body = request.content.body
+        self.categoryIdentifier = request.content.categoryIdentifier
+        self.soundIsNil = request.content.sound == nil
+        self.isTimeSensitive = request.content.interruptionLevel == .timeSensitive
+        self.userInfo = Self.stringUserInfo(from: request.content.userInfo)
+
+        if let trigger = request.trigger as? UNCalendarNotificationTrigger {
+            self.triggerYear = trigger.dateComponents.year
+            self.triggerMonth = trigger.dateComponents.month
+            self.triggerDay = trigger.dateComponents.day
+            self.triggerHour = trigger.dateComponents.hour
+            self.triggerMinute = trigger.dateComponents.minute
+            self.triggerSecond = trigger.dateComponents.second
+            self.triggerRepeats = trigger.repeats
+        } else {
+            self.triggerYear = nil
+            self.triggerMonth = nil
+            self.triggerDay = nil
+            self.triggerHour = nil
+            self.triggerMinute = nil
+            self.triggerSecond = nil
+            self.triggerRepeats = nil
+        }
+    }
+
+    private static func stringUserInfo(from userInfo: [AnyHashable: Any]) -> [String: String] {
+        var values: [String: String] = [:]
+        for (key, value) in userInfo {
+            guard let key = key as? String else { continue }
+            values[key] = String(describing: value)
+        }
+        return values
+    }
+}
+
+final class MockNotificationCenterStorage: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _pendingRequests: [CapturedNotificationRequest] = []
+    private var _removedPendingIdentifiers: [String] = []
+    private var _removedDeliveredIdentifiers: [String] = []
+    private var _registeredCategoryIdentifiers: [String] = []
+    private var _addCallCount = 0
+    private var _delegateSet = false
+    private var _authorizationStatus: NotificationAuthorizationStatus = .authorized
+    private var _addError: Error?
+
+    var pendingRequests: [CapturedNotificationRequest] {
+        self.lock.withLock { self._pendingRequests }
+    }
+
+    var removedPendingIdentifiers: [String] {
+        self.lock.withLock { self._removedPendingIdentifiers }
+    }
+
+    var removedDeliveredIdentifiers: [String] {
+        self.lock.withLock { self._removedDeliveredIdentifiers }
+    }
+
+    var registeredCategoryIdentifiers: [String] {
+        self.lock.withLock { self._registeredCategoryIdentifiers }
+    }
+
+    var addCallCount: Int {
+        self.lock.withLock { self._addCallCount }
+    }
+
+    var delegateSet: Bool {
+        self.lock.withLock { self._delegateSet }
+    }
+
+    var authorizationStatus: NotificationAuthorizationStatus {
+        get { self.lock.withLock { self._authorizationStatus } }
+        set { self.lock.withLock { self._authorizationStatus = newValue } }
+    }
+
+    var addError: Error? {
+        get { self.lock.withLock { self._addError } }
+        set { self.lock.withLock { self._addError = newValue } }
+    }
+
+    func addRequest(_ request: CapturedNotificationRequest) {
+        self.lock.withLock {
+            self._addCallCount += 1
+            self._pendingRequests.append(request)
+        }
+    }
+
+    func incrementAddCount() {
+        self.lock.withLock { self._addCallCount += 1 }
+    }
+
+    func removePending(identifiers: [String]) {
+        self.lock.withLock {
+            self._pendingRequests.removeAll { identifiers.contains($0.identifier) }
+            self._removedPendingIdentifiers.append(contentsOf: identifiers)
+        }
+    }
+
+    func removeAllPending() {
+        self.lock.withLock { self._pendingRequests.removeAll() }
+    }
+
+    func addRemovedDeliveredIdentifiers(_ identifiers: [String]) {
+        self.lock.withLock { self._removedDeliveredIdentifiers.append(contentsOf: identifiers) }
+    }
+
+    func setCategories(_ identifiers: [String]) {
+        self.lock.withLock { self._registeredCategoryIdentifiers = identifiers }
+    }
+
+    func markDelegateSet() {
+        self.lock.withLock { self._delegateSet = true }
+    }
+}
+
+final class MockNotificationCenter: NotificationCenterProtocol, @unchecked Sendable {
+    let storage = MockNotificationCenterStorage()
+
+    var pendingRequests: [CapturedNotificationRequest] {
+        self.storage.pendingRequests
+    }
+
+    var removedPendingIdentifiers: [String] {
+        self.storage.removedPendingIdentifiers
+    }
+
+    var removedDeliveredIdentifiers: [String] {
+        self.storage.removedDeliveredIdentifiers
+    }
+
+    var registeredCategoryIdentifiers: [String] {
+        self.storage.registeredCategoryIdentifiers
+    }
+
+    var addCallCount: Int {
+        self.storage.addCallCount
+    }
+
+    var delegateSet: Bool {
+        self.storage.delegateSet
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        if let error = storage.addError {
+            self.storage.incrementAddCount()
+            throw error
+        }
+        let captured = CapturedNotificationRequest(from: request)
+        self.storage.addRequest(captured)
+    }
+
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        self.storage.removePending(identifiers: identifiers)
+    }
+
+    func removeAllPendingNotificationRequests() {
+        self.storage.removeAllPending()
+    }
+
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
+        self.storage.addRemovedDeliveredIdentifiers(identifiers)
+    }
+
+    func removeAllDeliveredNotifications() {}
+
+    func setNotificationCategories(_ categories: Set<UNNotificationCategory>) {
+        let identifiers = categories.map(\.identifier)
+        self.storage.setCategories(identifiers)
+    }
+
+    func requestAuthorization(options _: UNAuthorizationOptions) async throws -> Bool {
+        self.storage.authorizationStatus == .authorized
+    }
+
+    func notificationSettings() async -> NotificationAuthorizationStatus {
+        self.storage.authorizationStatus
+    }
+
+    func setDelegate(_: any UNUserNotificationCenterDelegate) {
+        self.storage.markDelegateSet()
+    }
+
+    func setAuthorizationStatus(_ status: NotificationAuthorizationStatus) {
+        self.storage.authorizationStatus = status
+    }
+}
 
 struct ScheduledAlertHandler: Sendable {
     let alertId: String
@@ -74,27 +281,31 @@ actor MockAlertDelivery: AlertDelivery {
 actor MockDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
     private(set) var scheduledNotifications: [ScheduledAlert] = []
     private(set) var scheduledSnoozeDurations: [String: [TimeInterval]] = [:]
-    private(set) var cancelledNotificationIds: [String] = []
     private(set) var cancelledPendingNotificationIds: [String] = []
     private(set) var removedDeliveredNotificationIds: [String] = []
     private(set) var cancelAllCallCount = 0
+
+    var cancelledNotificationIds: [String] {
+        self.cancelledPendingNotificationIds
+    }
 
     func scheduleNotification(for alert: ScheduledAlert, snoozeDurations: [TimeInterval]) {
         self.scheduledNotifications.append(alert)
         self.scheduledSnoozeDurations[alert.id] = snoozeDurations
     }
 
-    func cancelNotification(alertId: String) {
-        self.cancelledNotificationIds.append(alertId)
+    func cancelPendingNotification(alertId: String) {
         self.cancelledPendingNotificationIds.append(alertId)
-        self.removedDeliveredNotificationIds.append(alertId)
         self.scheduledNotifications.removeAll { $0.id == alertId }
+    }
+
+    func removeDeliveredNotification(alertId: String) {
+        self.removedDeliveredNotificationIds.append(alertId)
     }
 
     func cancelAllNotifications() {
         self.cancelAllCallCount += 1
         let alertIds = self.scheduledNotifications.map(\.id)
-        self.cancelledNotificationIds.append(contentsOf: alertIds)
         self.cancelledPendingNotificationIds.append(contentsOf: alertIds)
         self.removedDeliveredNotificationIds.append(contentsOf: alertIds)
         self.scheduledNotifications.removeAll()
@@ -103,7 +314,6 @@ actor MockDurableAlertNotificationScheduler: DurableAlertNotificationScheduler {
     func reset() {
         self.scheduledNotifications = []
         self.scheduledSnoozeDurations = [:]
-        self.cancelledNotificationIds = []
         self.cancelledPendingNotificationIds = []
         self.removedDeliveredNotificationIds = []
         self.cancelAllCallCount = 0

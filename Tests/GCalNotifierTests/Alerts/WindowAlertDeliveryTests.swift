@@ -75,7 +75,8 @@ struct WindowAlertDeliveryTests {
 
         let remaining = await engine.scheduledAlerts
         #expect(remaining.contains { $0.id == alert.id })
-        #expect(!center.removedIdentifiers.contains(alert.id))
+        #expect(!center.removedPendingIdentifiers.contains(alert.id))
+        #expect(!center.removedDeliveredIdentifiers.contains(alert.id))
     }
 }
 

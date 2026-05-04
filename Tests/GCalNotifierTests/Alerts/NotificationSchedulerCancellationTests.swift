@@ -4,8 +4,8 @@ import Testing
 
 @Suite("NotificationScheduler Cancellation Tests")
 struct NotificationSchedulerCancellationTests {
-    @Test("Cancel durable notification removes pending and delivered notification")
-    func cancelDurableNotificationRemovesPendingAndDelivered() async {
+    @Test("Cancel pending durable notification leaves delivered notification visible")
+    func cancelPendingDurableNotificationLeavesDeliveredVisible() async {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
         let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
@@ -19,9 +19,23 @@ struct NotificationSchedulerCancellationTests {
         )
 
         await scheduler.scheduleNotification(for: alert)
-        await scheduler.cancelNotification(alertId: alert.id)
+        await scheduler.cancelPendingNotification(alertId: alert.id)
 
         #expect(mockCenter.pendingRequests.isEmpty)
-        #expect(mockCenter.removedIdentifiers.count { $0 == alert.id } == 2)
+        #expect(mockCenter.removedPendingIdentifiers == [alert.id])
+        #expect(mockCenter.removedDeliveredIdentifiers.isEmpty)
+    }
+
+    @Test("Remove delivered durable notification removes delivered only")
+    func removeDeliveredDurableNotificationRemovesDeliveredOnly() async {
+        let mockCenter = MockNotificationCenter()
+        let delegate = NotificationDelegate()
+        let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
+
+        await scheduler.removeDeliveredNotification(alertId: "alert-1")
+
+        #expect(mockCenter.pendingRequests.isEmpty)
+        #expect(mockCenter.removedPendingIdentifiers.isEmpty)
+        #expect(mockCenter.removedDeliveredIdentifiers == ["alert-1"])
     }
 }

@@ -45,6 +45,25 @@ struct AlertWindowControllerCommandTests {
     }
 
     @MainActor
+    @Test("Modal close acknowledges alert without removing delivered OS notification")
+    func modalCloseAcknowledgesWithoutRemovingDeliveredOSNotification() async throws {
+        let context = try makeModalCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        context.controller.setAlertEngine(context.engine)
+        context.controller.showAlert(for: context.event, stage: .stage2)
+
+        let notification = Notification(
+            name: NSWindow.willCloseNotification,
+            object: context.controller.window
+        )
+        context.controller.windowWillClose(notification)
+
+        try await expectModalCommandCleanedUp(context)
+    }
+
+    @MainActor
     @Test("Modal Stage 2 Snooze updates state and replaces alert effects")
     func modalStage2SnoozeUpdatesStateAndReplacesAlertEffects() async throws {
         let context = try makeModalCommandContext()
@@ -124,9 +143,11 @@ private func expectModalCommandCleanedUp(_ context: ModalCommandContext) async t
     let remaining = await context.engine.scheduledAlerts
     let cancelledAlerts = await context.scheduler.cancelledAlertIds
     let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    let removedDeliveredNotifications = await context.durableScheduler.removedDeliveredNotificationIds
     #expect(!remaining.contains { $0.id == context.alertId })
     #expect(cancelledAlerts.contains(context.alertId))
     #expect(cancelledNotifications.contains(context.alertId))
+    #expect(removedDeliveredNotifications.isEmpty)
 }
 
 @MainActor
@@ -143,9 +164,11 @@ private func expectModalAlertSnoozed(_ context: ModalCommandContext, expectedFir
     let alert = try #require(alerts.first { $0.id == context.alertId })
     let cancelledAlerts = await context.scheduler.cancelledAlertIds
     let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    let removedDeliveredNotifications = await context.durableScheduler.removedDeliveredNotificationIds
     #expect(alert.scheduledFireTime == expectedFireTime)
     #expect(alert.snoozeCount == 1)
     #expect(alert.originalFireTime == context.now)
     #expect(cancelledAlerts.contains(context.alertId))
     #expect(cancelledNotifications.contains(context.alertId))
+    #expect(removedDeliveredNotifications.isEmpty)
 }

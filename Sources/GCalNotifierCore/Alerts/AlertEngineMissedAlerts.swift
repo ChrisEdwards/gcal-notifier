@@ -23,7 +23,7 @@ public extension AlertEngine {
                 result = .tooOld(alert)
             }
             results.append(result)
-            await self.cancelScheduledDelivery(for: alert)
+            await self.cancelScheduledDelivery(for: alert, deliveredNotificationPolicy: .keepDelivered)
             if shouldKeepAlert {
                 self.alerts[alert.id] = self.updatedAlertForMissed(alert, now: now)
             } else {

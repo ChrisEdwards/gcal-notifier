@@ -325,10 +325,12 @@ private func expectAlertCleanedUp(_ context: CommandContext) async {
     let remaining = await context.engine.scheduledAlerts
     let cancelledAlerts = await context.scheduler.cancelledAlertIds
     let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    let removedDeliveredNotifications = await context.durableScheduler.removedDeliveredNotificationIds
     let acknowledged = await context.engine.acknowledgedAlerts
     #expect(!remaining.contains { $0.id == context.alertId })
     #expect(cancelledAlerts.contains(context.alertId))
     #expect(cancelledNotifications.contains(context.alertId))
+    #expect(removedDeliveredNotifications.isEmpty)
     #expect(acknowledged.contains(context.alertId))
 }
 
@@ -338,6 +340,7 @@ private func expectAlertSnoozed(_ context: CommandContext, expectedFireTime: Dat
     let scheduledNotifications = await context.durableScheduler.scheduledNotifications
     let cancelledAlerts = await context.scheduler.cancelledAlertIds
     let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    let removedDeliveredNotifications = await context.durableScheduler.removedDeliveredNotificationIds
     let snoozedAlert = try #require(alerts.first { $0.id == context.alertId })
     let persisted = try await context.store.load()
     let persistedAlert = persisted.first { $0.id == context.alertId }
@@ -347,6 +350,7 @@ private func expectAlertSnoozed(_ context: CommandContext, expectedFireTime: Dat
     #expect(persistedAlert?.scheduledFireTime == expectedFireTime)
     #expect(cancelledAlerts.contains(context.alertId))
     #expect(cancelledNotifications.contains(context.alertId))
+    #expect(removedDeliveredNotifications.isEmpty)
     #expect(scheduledAlerts.last?.fireDate == expectedFireTime)
     #expect(scheduledNotifications.last?.scheduledFireTime == expectedFireTime)
 }
@@ -356,12 +360,14 @@ private func expectOnlyStage1Completed(_ context: StageCommandContext) async {
     let acknowledged = await context.engine.acknowledgedAlerts
     let cancelledAlerts = await context.scheduler.cancelledAlertIds
     let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    let removedDeliveredNotifications = await context.durableScheduler.removedDeliveredNotificationIds
     #expect(!remaining.contains { $0.id == context.stage1AlertId })
     #expect(remaining.contains { $0.id == context.stage2AlertId })
     #expect(acknowledged.contains(context.stage1AlertId))
     #expect(!acknowledged.contains(context.stage2AlertId))
     #expect(cancelledAlerts.contains(context.stage1AlertId))
     #expect(cancelledNotifications.contains(context.stage1AlertId))
+    #expect(removedDeliveredNotifications.isEmpty)
     #expect(!cancelledAlerts.contains(context.stage2AlertId))
     #expect(!cancelledNotifications.contains(context.stage2AlertId))
 }
@@ -383,11 +389,13 @@ private func expectStage1SnoozedAndStage2Preserved(
     let stage2 = alerts.first { $0.id == context.stage2AlertId }
     let cancelledAlerts = await context.scheduler.cancelledAlertIds
     let cancelledNotifications = await context.durableScheduler.cancelledNotificationIds
+    let removedDeliveredNotifications = await context.durableScheduler.removedDeliveredNotificationIds
     #expect(stage1?.scheduledFireTime == expectedFireTime)
     #expect(stage1?.snoozeCount == 1)
     #expect(stage2?.scheduledFireTime == context.event.startTime.addingTimeInterval(-2 * 60))
     #expect(cancelledAlerts.contains(context.stage1AlertId))
     #expect(cancelledNotifications.contains(context.stage1AlertId))
+    #expect(removedDeliveredNotifications.isEmpty)
     #expect(!cancelledAlerts.contains(context.stage2AlertId))
     #expect(!cancelledNotifications.contains(context.stage2AlertId))
 }

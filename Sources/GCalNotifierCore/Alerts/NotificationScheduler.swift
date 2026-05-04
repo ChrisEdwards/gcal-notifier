@@ -169,8 +169,11 @@ extension NotificationScheduler: DurableAlertNotificationScheduler {
         }
     }
 
-    public func cancelNotification(alertId: String) async {
+    public func cancelPendingNotification(alertId: String) async {
         self.center.removePendingNotificationRequests(withIdentifiers: [alertId])
+    }
+
+    public func removeDeliveredNotification(alertId: String) async {
         self.center.removeDeliveredNotifications(withIdentifiers: [alertId])
     }
 

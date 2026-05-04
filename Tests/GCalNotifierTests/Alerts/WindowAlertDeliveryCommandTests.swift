@@ -76,7 +76,8 @@ struct WindowDeliveryCommandTests {
         #expect(context.windowController.window?.contentView != nil)
         let remaining = await context.engine.scheduledAlerts
         #expect(remaining.contains { $0.id == context.alertId })
-        #expect(context.center.removedIdentifiers.isEmpty)
+        #expect(context.center.removedPendingIdentifiers.isEmpty)
+        #expect(context.center.removedDeliveredIdentifiers.isEmpty)
     }
 }
 
@@ -153,7 +154,8 @@ private func expectNotificationCommandCleanedUp(_ context: NotificationCommandCo
     let cancelledAlerts = await context.scheduler.cancelledAlertIds
     #expect(!remaining.contains { $0.id == context.alertId })
     #expect(cancelledAlerts.contains(context.alertId))
-    #expect(context.center.removedIdentifiers.contains(context.alertId))
+    #expect(context.center.removedPendingIdentifiers.contains(context.alertId))
+    #expect(!context.center.removedDeliveredIdentifiers.contains(context.alertId))
 }
 
 @MainActor
@@ -171,6 +173,7 @@ private func expectNotificationAlertSnoozed(
     #expect(alert.originalFireTime == context.now)
     #expect(scheduledAlerts.last?.fireDate == expectedFireTime)
     #expect(context.center.pendingRequests.count == 1)
-    #expect(context.center.removedIdentifiers.contains(context.alertId))
+    #expect(context.center.removedPendingIdentifiers.contains(context.alertId))
+    #expect(!context.center.removedDeliveredIdentifiers.contains(context.alertId))
     #expect(request.userInfo["scheduledFireTime"] == expectedFireTimeText)
 }

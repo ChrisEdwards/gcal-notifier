@@ -46,23 +46,21 @@ public actor AlertEngine {
 
     public func scheduleAlerts(for events: [CalendarEvent], settings: SettingsStore) async {
         let now = self.dateProvider()
-        let stage1Minutes = settings.alertStage1Minutes
-        let stage2Minutes = settings.alertStage2Minutes
+        let stages: [(stage: AlertStage, minutesBefore: Int)] = [
+            (.stage2, settings.alertStage2Minutes),
+            (.stage1, settings.alertStage1Minutes),
+        ]
         let filter = EventFilter(settings: settings)
         for event in events {
             guard filter.shouldAlert(for: event) else { continue }
-            await self.scheduleStageAlert(
-                for: event,
-                stage: .stage2,
-                minutesBefore: stage2Minutes,
-                now: now
-            )
-            await self.scheduleStageAlert(
-                for: event,
-                stage: .stage1,
-                minutesBefore: stage1Minutes,
-                now: now
-            )
+            for stage in stages {
+                await self.scheduleStageAlert(
+                    for: event,
+                    stage: stage.stage,
+                    minutesBefore: stage.minutesBefore,
+                    now: now
+                )
+            }
         }
         await self.persistAlerts()
     }
@@ -70,7 +68,7 @@ public actor AlertEngine {
     public func cancelAlerts(for eventId: String) async {
         let alertsToCancel = self.alerts.values.filter { $0.eventId == eventId }
         for alert in alertsToCancel {
-            await self.cancelScheduledDelivery(for: alert)
+            await self.cancelScheduledDelivery(for: alert, deliveredNotificationPolicy: .removeDelivered)
             self.alerts.removeValue(forKey: alert.id)
         }
         await self.persistAlerts()
@@ -114,7 +112,7 @@ public actor AlertEngine {
             throw AlertError.snoozePastStage2
         }
         let snoozedAlert = existingAlert.snoozed(until: newFireTime)
-        await self.cancelScheduledDelivery(for: existingAlert)
+        await self.cancelScheduledDelivery(for: existingAlert, deliveredNotificationPolicy: .keepDelivered)
         self.alerts[alertId] = snoozedAlert
         await self.scheduleTimer(for: snoozedAlert)
         await self.scheduleDurableNotificationIfNeeded(for: snoozedAlert)
@@ -151,7 +149,7 @@ public actor AlertEngine {
         }
         for alertId in alertIdsToCancel {
             if let alert = self.alerts.removeValue(forKey: alertId) {
-                await self.cancelScheduledDelivery(for: alert)
+                await self.cancelScheduledDelivery(for: alert, deliveredNotificationPolicy: .removeDelivered)
             }
         }
         self.acknowledgedAlertStartTimes = self.acknowledgedAlertStartTimes.filter { alertId, startTime in
@@ -166,7 +164,6 @@ public actor AlertEngine {
     public func reconcileOnRelaunch() async throws {
         guard !self.isInitialized else { return }
         self.isInitialized = true
-
         do {
             let persistedAlerts = try await alertsStore.load()
             let now = self.dateProvider()
@@ -227,10 +224,10 @@ extension AlertEngine {
 
     private func cancelAlert(alertId: String) async {
         if let alert = self.alerts[alertId] {
-            await self.cancelScheduledDelivery(for: alert)
+            await self.cancelScheduledDelivery(for: alert, deliveredNotificationPolicy: .keepDelivered)
         } else {
             await self.scheduler.cancel(alertId: alertId)
-            await self.durableNotificationScheduler.cancelNotification(alertId: alertId)
+            await self.durableNotificationScheduler.cancelPendingNotification(alertId: alertId)
         }
         self.alerts.removeValue(forKey: alertId)
         await self.persistAlerts()
@@ -267,7 +264,7 @@ extension AlertEngine {
             if existing == alert {
                 return
             }
-            await self.cancelScheduledDelivery(for: existing)
+            await self.cancelScheduledDelivery(for: existing, deliveredNotificationPolicy: .removeDelivered)
         }
         self.alerts[alert.id] = alert
         AlertDiagnostics.log(.alertRecordCreated, alert: alert)
@@ -340,7 +337,7 @@ extension AlertEngine {
 
     private func cancelExistingAlertIfPresent(alertId: String) async {
         guard let alert = self.alerts.removeValue(forKey: alertId) else { return }
-        await self.cancelScheduledDelivery(for: alert)
+        await self.cancelScheduledDelivery(for: alert, deliveredNotificationPolicy: .removeDelivered)
     }
 
     private func scheduleTimer(for alert: ScheduledAlert) async {
@@ -365,9 +362,15 @@ extension AlertEngine {
         )
     }
 
-    func cancelScheduledDelivery(for alert: ScheduledAlert) async {
+    func cancelScheduledDelivery(
+        for alert: ScheduledAlert,
+        deliveredNotificationPolicy: DeliveredNotificationCancellationPolicy
+    ) async {
         await self.scheduler.cancel(alertId: alert.id)
-        await self.durableNotificationScheduler.cancelNotification(alertId: alert.id)
+        await self.durableNotificationScheduler.cancelPendingNotification(alertId: alert.id)
+        if deliveredNotificationPolicy == .removeDelivered {
+            await self.durableNotificationScheduler.removeDeliveredNotification(alertId: alert.id)
+        }
         AlertDiagnostics.log(.scheduledEffectsCanceled, alert: alert)
     }
 
