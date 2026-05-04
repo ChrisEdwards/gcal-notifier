@@ -2,7 +2,7 @@ import GCalNotifierCore
 import SwiftUI
 
 /// Result returned from force sync operation.
-struct ForceSyncResult: Sendable {
+struct ForceSyncResult {
     let eventCount: Int
     let error: String?
 

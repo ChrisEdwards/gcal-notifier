@@ -78,6 +78,7 @@ Use these make targets for all checks and tests:
 make check       # Run linting and static analysis (quiet output)
 make test        # Run all tests (quiet output)
 make check-test  # Run both checks and tests
+make ci          # Run the canonical local/CI gate
 
 # Verbose output when debugging failures
 make check VERBOSE=1

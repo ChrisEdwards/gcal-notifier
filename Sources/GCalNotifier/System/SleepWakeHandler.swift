@@ -113,7 +113,7 @@ public final class SleepWakeHandler {
 // MARK: - WakeRecoveryCoordinator
 
 /// Coordinates wake recovery without reconstructing missed exact-time modal delivery.
-struct WakeRecoveryCoordinator: Sendable {
+struct WakeRecoveryCoordinator {
     private let syncAndReconcile: @MainActor @Sendable () async -> Void
 
     init(syncAndReconcile: @escaping @MainActor @Sendable () async -> Void) {

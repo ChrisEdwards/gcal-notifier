@@ -198,7 +198,7 @@ public actor GoogleCalendarClient {
         guard let errorInfo = try? JSONDecoder().decode(GoogleErrorResponse.self, from: data) else {
             return false
         }
-        let rateLimitReasons: Set<String> = [
+        let rateLimitReasons: Set = [
             "rateLimitExceeded",
             "userRateLimitExceeded",
             "dailyLimitExceeded",
@@ -390,7 +390,7 @@ private extension GoogleCalendarClient {
 
 // MARK: - Response Types
 
-private struct ParsedEventsPage: Sendable {
+private struct ParsedEventsPage {
     let events: [CalendarEvent]
     let nextSyncToken: String?
     let nextPageToken: String?

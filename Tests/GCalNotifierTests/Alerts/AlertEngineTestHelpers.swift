@@ -5,7 +5,7 @@ import Testing
 
 // MARK: - Mock Dependencies
 
-struct CapturedNotificationRequest: Sendable {
+struct CapturedNotificationRequest {
     let identifier: String
     let title: String
     let body: String
@@ -211,7 +211,7 @@ final class MockNotificationCenter: NotificationCenterProtocol, @unchecked Senda
     }
 }
 
-struct ScheduledAlertHandler: Sendable {
+struct ScheduledAlertHandler {
     let alertId: String
     let fireDate: Date
     let handler: @Sendable () -> Void

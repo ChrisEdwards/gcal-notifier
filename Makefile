@@ -1,4 +1,7 @@
-.PHONY: help build build-release test test-parallel check format lint clean start stop package check-test all e2e-test
+.PHONY: help build build-release test test-parallel check format lint clean start stop package check-test ci all e2e-test
+
+SWIFTFORMAT := swift run --package-path Tools swiftformat
+SWIFTLINT := swift run --package-path Tools swiftlint
 
 help: ## Display available make targets
 	@awk 'BEGIN {FS=":.*##"; printf "\nUsage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_\-]+:.*##/ {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -58,7 +61,7 @@ e2e-test: ## Run E2E test scripts sequentially (interactive)
 
 check: ## Run format check and lint (quiet output)
 	@if [ -n "$$VERBOSE" ]; then \
-		swiftformat . --lint && swiftlint lint --strict; \
+		$(SWIFTFORMAT) . --lint && $(SWIFTLINT) lint --strict; \
 	else \
 		$(MAKE) check-quiet; \
 	fi
@@ -66,29 +69,33 @@ check: ## Run format check and lint (quiet output)
 check-quiet:
 	@. ./hack/run_silent.sh && print_main_header "Running Checks"
 	@. ./hack/run_silent.sh && print_header "GCalNotifier" "Format check"
-	@. ./hack/run_silent.sh && run_with_quiet "Format" "swiftformat . --lint"
+	@. ./hack/run_silent.sh && run_with_quiet "Format" "$(SWIFTFORMAT) . --lint"
 	@. ./hack/run_silent.sh && print_header "GCalNotifier" "Lint"
-	@. ./hack/run_silent.sh && run_with_quiet "Lint" "swiftlint lint --strict"
+	@. ./hack/run_silent.sh && run_with_quiet "Lint" "$(SWIFTLINT) lint --strict"
 
 format: ## Auto-format code with swiftformat
 	@if [ -n "$$VERBOSE" ]; then \
-		swiftformat .; \
+		$(SWIFTFORMAT) .; \
 	else \
-		. ./hack/run_silent.sh && run_silent "Formatting code" "swiftformat ."; \
+		. ./hack/run_silent.sh && run_silent "Formatting code" "$(SWIFTFORMAT) ."; \
 	fi
 
 lint: ## Run swiftlint with auto-fix
 	@if [ -n "$$VERBOSE" ]; then \
-		swiftlint lint --fix --strict; \
+		$(SWIFTLINT) lint --fix --strict; \
 	else \
-		. ./hack/run_silent.sh && run_silent "Linting code" "swiftlint lint --fix --strict"; \
+		. ./hack/run_silent.sh && run_silent "Linting code" "$(SWIFTLINT) lint --fix --strict"; \
 	fi
 
 ## Combined targets
 
-check-test: ## Run all checks and tests
+check-test: ci ## Run the same gate as CI
+
+ci: ## Run the canonical local/CI gate
 	@$(MAKE) check
-	@$(MAKE) test
+	@$(MAKE) build
+	@$(MAKE) build-release
+	@$(MAKE) test-parallel
 
 all: ## Run format, lint, and tests
 	@$(MAKE) format

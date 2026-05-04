@@ -3,7 +3,7 @@ import Foundation
 // MARK: - AppState
 
 /// Internal data structure for persisting application state.
-struct AppState: Codable, Sendable {
+struct AppState: Codable {
     var syncTokens: [String: String]
     var lastFullSync: Date?
 

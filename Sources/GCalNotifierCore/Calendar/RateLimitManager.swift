@@ -31,7 +31,7 @@ public actor RateLimitManager {
     // MARK: - Types
 
     /// Internal state for tracking backoff per calendar.
-    private struct BackoffState: Sendable {
+    private struct BackoffState {
         var backoffUntil: Date
         var consecutiveRateLimits: Int
         var retryAfterProvided: TimeInterval?

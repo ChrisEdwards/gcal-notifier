@@ -17,7 +17,7 @@ private enum TestError: Error, LocalizedError {
 
 // MARK: - Mock Delegate
 
-private struct HealthChange: Sendable {
+private struct HealthChange {
     let calendarId: String
     let from: CalendarHealth
     let to: CalendarHealth

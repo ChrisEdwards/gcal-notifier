@@ -8,6 +8,7 @@
 .build/
 .swiftpm/
 Package.resolved
+!Tools/Package.resolved
 
 # Xcode
 *.xcodeproj

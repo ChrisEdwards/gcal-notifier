@@ -71,7 +71,7 @@ public actor CalendarHealthTracker {
     // MARK: - Types
 
     /// Internal state for tracking calendar health.
-    private struct CalendarState: Sendable {
+    private struct CalendarState {
         var health: CalendarHealth
         var consecutiveFailures: Int
         var lastError: String?
