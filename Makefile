@@ -1,8 +1,8 @@
 .PHONY: help build build-release test test-parallel tools check format lint clean start stop package check-test ci all e2e-test
 
-TOOLS_BUILD_DIR := Tools/.build/debug
-SWIFTFORMAT := $(TOOLS_BUILD_DIR)/swiftformat
-SWIFTLINT := $(TOOLS_BUILD_DIR)/swiftlint
+TOOLS_BIN_DIR := $(shell swift build --package-path Tools --show-bin-path 2>/dev/null)
+SWIFTFORMAT := $(TOOLS_BIN_DIR)/swiftformat
+SWIFTLINT := $(TOOLS_BIN_DIR)/swiftlint
 
 help: ## Display available make targets
 	@awk 'BEGIN {FS=":.*##"; printf "\nUsage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_\-]+:.*##/ {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
