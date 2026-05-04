@@ -1,6 +1,7 @@
 .PHONY: help build build-release test test-parallel tools check format lint clean start stop package check-test ci all e2e-test
 
 TOOLS_BIN_DIR := $(shell swift build --package-path Tools --show-bin-path 2>/dev/null)
+TOOLS_BUILD := swift build --package-path Tools
 SWIFTFORMAT := $(TOOLS_BIN_DIR)/swiftformat
 SWIFTLINT := $(TOOLS_BIN_DIR)/swiftlint
 
@@ -62,9 +63,10 @@ e2e-test: ## Run E2E test scripts sequentially (interactive)
 
 tools: ## Build pinned development tools
 	@if [ -n "$$VERBOSE" ]; then \
-		swift build --package-path Tools --product swiftformat --product swiftlint; \
+		$(TOOLS_BUILD) --product swiftformat && \
+		$(TOOLS_BUILD) --product swiftlint; \
 	else \
-		. ./hack/run_silent.sh && run_silent "Build pinned tools" "swift build --package-path Tools --product swiftformat --product swiftlint"; \
+		. ./hack/run_silent.sh && run_silent "Build pinned tools" "$(TOOLS_BUILD) --product swiftformat && $(TOOLS_BUILD) --product swiftlint"; \
 	fi
 
 check: tools ## Run format check and lint (quiet output)
