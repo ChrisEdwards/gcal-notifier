@@ -1,7 +1,8 @@
-.PHONY: help build build-release test test-parallel check format lint clean start stop package check-test ci all e2e-test
+.PHONY: help build build-release test test-parallel tools check format lint clean start stop package check-test ci all e2e-test
 
-SWIFTFORMAT := swift run --package-path Tools swiftformat
-SWIFTLINT := swift run --package-path Tools swiftlint
+TOOLS_BUILD_DIR := Tools/.build/debug
+SWIFTFORMAT := $(TOOLS_BUILD_DIR)/swiftformat
+SWIFTLINT := $(TOOLS_BUILD_DIR)/swiftlint
 
 help: ## Display available make targets
 	@awk 'BEGIN {FS=":.*##"; printf "\nUsage: make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_\-]+:.*##/ {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -59,7 +60,14 @@ e2e-test: ## Run E2E test scripts sequentially (interactive)
 
 ## Check targets (formatting and linting)
 
-check: ## Run format check and lint (quiet output)
+tools: ## Build pinned development tools
+	@if [ -n "$$VERBOSE" ]; then \
+		swift build --package-path Tools --product swiftformat --product swiftlint; \
+	else \
+		. ./hack/run_silent.sh && run_silent "Build pinned tools" "swift build --package-path Tools --product swiftformat --product swiftlint"; \
+	fi
+
+check: tools ## Run format check and lint (quiet output)
 	@if [ -n "$$VERBOSE" ]; then \
 		$(SWIFTFORMAT) . --lint && $(SWIFTLINT) lint --strict; \
 	else \
@@ -73,14 +81,14 @@ check-quiet:
 	@. ./hack/run_silent.sh && print_header "GCalNotifier" "Lint"
 	@. ./hack/run_silent.sh && run_with_quiet "Lint" "$(SWIFTLINT) lint --strict"
 
-format: ## Auto-format code with swiftformat
+format: tools ## Auto-format code with swiftformat
 	@if [ -n "$$VERBOSE" ]; then \
 		$(SWIFTFORMAT) .; \
 	else \
 		. ./hack/run_silent.sh && run_silent "Formatting code" "$(SWIFTFORMAT) ."; \
 	fi
 
-lint: ## Run swiftlint with auto-fix
+lint: tools ## Run swiftlint with auto-fix
 	@if [ -n "$$VERBOSE" ]; then \
 		$(SWIFTLINT) lint --fix --strict; \
 	else \
