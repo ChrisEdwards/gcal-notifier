@@ -104,19 +104,32 @@ if [ -f "GCalNotifier.entitlements" ]; then
     cp "GCalNotifier.entitlements" "$DIST_DIR/"
 fi
 
-# Code sign if Developer ID is available
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID"; then
-    echo "Signing app bundle..."
-    SIGNING_IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+# Code sign with the best available identity.
+# Release/distribution builds prefer Developer ID. Local builds use the project dev certificate.
+DEVELOPER_ID_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+LOCAL_SIGNING_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 "GCalNotifier Dev\|Apple Development\|Mac Developer" | sed 's/.*"\(.*\)".*/\1/')
+
+if [ -n "$DEVELOPER_ID_IDENTITY" ]; then
+    echo "Signing app bundle for distribution..."
+    SIGNING_IDENTITY="$DEVELOPER_ID_IDENTITY"
     if [ -f "GCalNotifier.entitlements" ]; then
         codesign --force --options runtime --entitlements "GCalNotifier.entitlements" --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
     else
         codesign --force --options runtime --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
     fi
     echo "Signed with: $SIGNING_IDENTITY"
+elif [ -n "$LOCAL_SIGNING_IDENTITY" ]; then
+    echo "Signing app bundle for local development..."
+    SIGNING_IDENTITY="$LOCAL_SIGNING_IDENTITY"
+    if [ -f "GCalNotifier.entitlements" ]; then
+        codesign --force --entitlements "GCalNotifier.entitlements" --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
+    else
+        codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
+    fi
+    echo "Signed with: $SIGNING_IDENTITY"
 else
-    echo "Note: No Developer ID found, app bundle is unsigned"
-    echo "For local testing, you can ad-hoc sign with:"
+    echo "Note: No signing identity found, app bundle is unsigned"
+    echo "For temporary local testing, you can ad-hoc sign with:"
     echo "  codesign --force --sign - $APP_BUNDLE"
 fi
 
