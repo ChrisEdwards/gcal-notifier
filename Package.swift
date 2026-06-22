@@ -8,7 +8,7 @@ let package = Package(
         .executable(name: "GCalNotifier", targets: ["GCalNotifier"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.0.0"),
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.0.0"),
         .package(url: "https://github.com/orchetect/MenuBarExtraAccess", from: "1.0.0"),
     ],
     targets: [
