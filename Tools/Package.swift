@@ -6,6 +6,6 @@ let package = Package(
     platforms: [.macOS(.v15)],
     dependencies: [
         .package(url: "https://github.com/nicklockwood/SwiftFormat", exact: "0.61.1"),
-        .package(url: "https://github.com/realm/SwiftLint", exact: "0.63.2"),
+        .package(url: "https://github.com/realm/SwiftLint", exact: "0.64.0"),
     ]
 )
