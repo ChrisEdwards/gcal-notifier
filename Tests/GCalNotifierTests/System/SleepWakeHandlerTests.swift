@@ -23,10 +23,18 @@ private final class MockSleepWakeDelegate: SleepWakeHandlerDelegate {
 }
 
 private actor WakeRecoverySpy {
+    private(set) var rearmCount = 0
     private(set) var syncCount = 0
+    private(set) var operations: [String] = []
+
+    func rearmScheduledTimers() {
+        self.rearmCount += 1
+        self.operations.append("rearm")
+    }
 
     func syncAndReconcile() {
         self.syncCount += 1
+        self.operations.append("sync")
     }
 }
 
@@ -89,15 +97,18 @@ struct SleepWakeHandlerTests {
         // Should not crash
     }
 
-    @Test("wake recovery performs sync reconciliation once")
-    func wakeRecoveryPerformsSyncReconciliationOnce() async {
+    @Test("wake recovery re-arms timers before sync reconciliation")
+    func wakeRecoveryRearmsTimersBeforeSyncReconciliation() async {
         let spy = WakeRecoverySpy()
-        let recovery = WakeRecoveryCoordinator {
-            await spy.syncAndReconcile()
-        }
+        let recovery = WakeRecoveryCoordinator(
+            rearmScheduledTimers: { await spy.rearmScheduledTimers() },
+            syncAndReconcile: { await spy.syncAndReconcile() }
+        )
 
         await recovery.recoverFromWake()
 
+        #expect(await spy.rearmCount == 1)
         #expect(await spy.syncCount == 1)
+        #expect(await spy.operations == ["rearm", "sync"])
     }
 }

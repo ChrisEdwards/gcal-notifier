@@ -46,9 +46,9 @@ public actor DispatchAlertScheduler: AlertScheduler {
     public func schedule(alertId: String, fireDate: Date, handler: @escaping @Sendable () -> Void) {
         self.cancel(alertId: alertId)
 
-        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInteractive))
+        let timer = DispatchSource.makeTimerSource(flags: .strict, queue: .global(qos: .userInteractive))
         let interval = max(0, fireDate.timeIntervalSinceNow)
-        timer.schedule(deadline: .now() + interval)
+        timer.schedule(wallDeadline: .now() + interval)
         timer.setEventHandler { handler() }
         timer.resume()
         self.timers[alertId] = timer

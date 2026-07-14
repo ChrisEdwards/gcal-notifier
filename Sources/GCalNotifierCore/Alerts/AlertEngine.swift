@@ -340,7 +340,7 @@ extension AlertEngine {
         await self.cancelScheduledDelivery(for: alert, deliveredNotificationPolicy: .removeDelivered)
     }
 
-    private func scheduleTimer(for alert: ScheduledAlert) async {
+    func scheduleTimer(for alert: ScheduledAlert) async {
         await self.scheduler.schedule(
             alertId: alert.id,
             fireDate: alert.scheduledFireTime

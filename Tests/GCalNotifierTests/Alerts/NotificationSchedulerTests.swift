@@ -3,6 +3,26 @@ import Testing
 @preconcurrency import UserNotifications
 @testable import GCalNotifierCore
 
+@Suite("DispatchAlertScheduler Tests")
+struct DispatchAlertSchedulerTests {
+    @Test("Short wall-clock timer fires")
+    func shortWallClockTimerFires() async throws {
+        let scheduler = DispatchAlertScheduler()
+        let didFire = SendableBox(false)
+
+        await scheduler.schedule(
+            alertId: "short-wall-clock-timer",
+            fireDate: Date().addingTimeInterval(0.02)
+        ) {
+            didFire.value = true
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(didFire.value)
+        await scheduler.cancelAll()
+    }
+}
+
 @Suite("NotificationScheduler Tests")
 struct NotificationSchedulerTests {
     @Test("Schedule creates notification request with correct identifier")

@@ -3,6 +3,13 @@ import Foundation
 public extension AlertEngine {
     private static let missedAlertGracePeriod: TimeInterval = 5 * 60
 
+    func rearmScheduledTimers() async {
+        let now = self.dateProvider()
+        for alert in self.alerts.values where alert.scheduledFireTime > now {
+            await self.scheduleTimer(for: alert)
+        }
+    }
+
     func checkForMissedAlerts() async -> [MissedAlertResult] {
         let now = self.dateProvider()
         var results: [MissedAlertResult] = []

@@ -54,6 +54,32 @@ struct AlertEngineReconcileOnRelaunchTests {
         #expect(await context.scheduler.scheduledAlerts.count == 1)
     }
 
+    @Test("Re-arm schedules every future alert again after wake")
+    func rearmSchedulesFutureAlertsAgain() async throws {
+        let context = try await makeRelaunchContext(alert: makeFutureRelaunchAlert())
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+        try await context.engine.reconcileOnRelaunch()
+        await context.scheduler.reset()
+
+        await context.engine.rearmScheduledTimers()
+
+        let scheduled = await context.scheduler.scheduledAlerts
+        #expect(scheduled.count == 1)
+        #expect(scheduled.first?.alertId == context.alert.id)
+        #expect(scheduled.first?.fireDate == context.alert.scheduledFireTime)
+    }
+
+    @Test("Re-arm leaves alerts whose fire time passed for missed-alert recovery")
+    func rearmSkipsPastAlerts() async throws {
+        let context = try await makeRelaunchContext(alert: makeOverdueRelevantRelaunchAlert())
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+        try await context.engine.reconcileOnRelaunch()
+
+        await context.engine.rearmScheduledTimers()
+
+        #expect(await context.scheduler.scheduledAlerts.isEmpty)
+    }
+
     @Test("Reconcile on relaunch retries after load failure")
     func reconcileOnRelaunchRetriesAfterLoadFailure() async throws {
         let fileURL = makeAlertTestTempFileURL()
