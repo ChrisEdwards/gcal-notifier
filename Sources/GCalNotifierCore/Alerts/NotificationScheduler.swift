@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import Security
 @preconcurrency import UserNotifications
 
 public protocol NotificationCenterProtocol: Sendable {
@@ -82,6 +83,7 @@ public actor NotificationScheduler {
     private let center: any NotificationCenterProtocol
     private var handlers: [String: @Sendable () -> Void] = [:]
     private let delegate: NotificationDelegate
+    private let timeSensitiveNotificationsEnabled: Bool
 
     public init() async {
         let center: any NotificationCenterProtocol = SystemNotificationCenter()
@@ -89,14 +91,20 @@ public actor NotificationScheduler {
         center.setDelegate(delegate)
         self.center = center
         self.delegate = delegate
+        self.timeSensitiveNotificationsEnabled = Self.hasTimeSensitiveNotificationEntitlement
 
         await self.registerCategory()
     }
 
-    public init(center: any NotificationCenterProtocol, delegate: NotificationDelegate) async {
+    public init(
+        center: any NotificationCenterProtocol,
+        delegate: NotificationDelegate,
+        timeSensitiveNotificationsEnabled: Bool = false
+    ) async {
         center.setDelegate(delegate)
         self.center = center
         self.delegate = delegate
+        self.timeSensitiveNotificationsEnabled = timeSensitiveNotificationsEnabled
         await self.registerCategory()
     }
 }
@@ -151,7 +159,7 @@ extension NotificationScheduler: AlertScheduler {
 
 extension NotificationScheduler: DurableAlertNotificationScheduler {
     public func scheduleNotification(for alert: ScheduledAlert, snoozeDurations: [TimeInterval]) async {
-        let content = Self.makeNotificationContent(for: alert, snoozeDurations: snoozeDurations)
+        let content = self.makeNotificationContent(for: alert, snoozeDurations: snoozeDurations)
         let trigger = Self.makeCalendarTrigger(fireDate: alert.scheduledFireTime)
         let request = UNNotificationRequest(
             identifier: alert.id,
@@ -234,7 +242,7 @@ private extension NotificationScheduler {
         handler()
     }
 
-    private static func makeNotificationContent(
+    private func makeNotificationContent(
         for alert: ScheduledAlert,
         snoozeDurations: [TimeInterval]
     ) -> UNMutableNotificationContent {
@@ -244,7 +252,10 @@ private extension NotificationScheduler {
         content.body = alert.notificationPayload.body
         content.categoryIdentifier = categoryIdentifier
         content.sound = Self.notificationSound(for: alert.notificationPayload.soundBehavior)
-        content.interruptionLevel = Self.interruptionLevel(for: alert.notificationPayload.urgency)
+        content.interruptionLevel = Self.interruptionLevel(
+            for: alert.notificationPayload.urgency,
+            timeSensitiveNotificationsEnabled: self.timeSensitiveNotificationsEnabled
+        )
         content.userInfo = Self.userInfo(for: alert, categoryIdentifier: categoryIdentifier)
         return content
     }
@@ -281,7 +292,8 @@ private extension NotificationScheduler {
     }
 
     private static func interruptionLevel(
-        for urgency: AlertNotificationUrgency
+        for urgency: AlertNotificationUrgency,
+        timeSensitiveNotificationsEnabled: Bool
     ) -> UNNotificationInterruptionLevel {
         switch urgency {
         case .passive:
@@ -289,8 +301,14 @@ private extension NotificationScheduler {
         case .active:
             .active
         case .timeSensitive:
-            .timeSensitive
+            timeSensitiveNotificationsEnabled ? .timeSensitive : .active
         }
+    }
+
+    private static var hasTimeSensitiveNotificationEntitlement: Bool {
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        let entitlementName = "com.apple.developer.usernotifications.time-sensitive" as CFString
+        return SecTaskCopyValueForEntitlement(task, entitlementName, nil) as? Bool == true
     }
 
     private static func userInfo(for alert: ScheduledAlert, categoryIdentifier: String) -> [String: String] {

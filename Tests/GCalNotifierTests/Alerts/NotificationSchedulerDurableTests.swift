@@ -30,7 +30,11 @@ struct NotificationSchedulerDurableTests {
     func durableStage2NotificationUsesAlertSnapshotContent() async throws {
         let mockCenter = MockNotificationCenter()
         let delegate = NotificationDelegate()
-        let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
+        let scheduler = await NotificationScheduler(
+            center: mockCenter,
+            delegate: delegate,
+            timeSensitiveNotificationsEnabled: true
+        )
 
         let fireDate = Date(timeIntervalSince1970: 1_800_000_000)
         let alert = try makeStage2NotificationTestAlert(fireDate: fireDate)
@@ -45,6 +49,25 @@ struct NotificationSchedulerDurableTests {
         #expect(request.categoryIdentifier == NotificationScheduler.stage2Snooze5Category)
         #expect(request.soundIsNil == false)
         #expect(request.isTimeSensitive)
+    }
+
+    @Test("Durable Stage 2 notification falls back to active without its entitlement")
+    func durableStage2NotificationFallsBackToActiveWithoutEntitlement() async throws {
+        let mockCenter = MockNotificationCenter()
+        let delegate = NotificationDelegate()
+        let scheduler = await NotificationScheduler(
+            center: mockCenter,
+            delegate: delegate,
+            timeSensitiveNotificationsEnabled: false
+        )
+        let alert = try makeStage2NotificationTestAlert(fireDate: Date(timeIntervalSince1970: 1_800_000_000))
+
+        await scheduler.scheduleNotification(for: alert)
+
+        let request = try #require(mockCenter.pendingRequests.first)
+        #expect(request.isActive)
+        #expect(!request.isTimeSensitive)
+        #expect(request.soundIsNil == false)
     }
 
     @Test("Durable Stage 2 notification includes cache-independent fallback metadata")

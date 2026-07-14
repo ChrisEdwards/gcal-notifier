@@ -92,7 +92,22 @@ SIGNING_IDENTITY=$(security find-identity -v -p codesigning | grep -m1 "GCalNoti
 
 if [ -n "$SIGNING_IDENTITY" ]; then
     echo "Signing with: $SIGNING_IDENTITY"
-    codesign --force --sign "$SIGNING_IDENTITY" --entitlements "$PROJECT_ROOT/GCalNotifier.entitlements" "$APP_BUNDLE"
+    SOURCE_ENTITLEMENTS="$PROJECT_ROOT/GCalNotifier.entitlements"
+    LOCAL_ENTITLEMENTS="$PROJECT_ROOT/.build/debug/GCalNotifier.local.entitlements"
+    if [ -f "$SOURCE_ENTITLEMENTS" ]; then
+        cp "$SOURCE_ENTITLEMENTS" "$LOCAL_ENTITLEMENTS"
+        if /usr/libexec/PlistBuddy \
+            -c "Print :com.apple.developer.usernotifications.time-sensitive" \
+            "$LOCAL_ENTITLEMENTS" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy \
+                -c "Delete :com.apple.developer.usernotifications.time-sensitive" \
+                "$LOCAL_ENTITLEMENTS"
+            echo "Time-sensitive notifications disabled for this local development signature."
+        fi
+        codesign --force --sign "$SIGNING_IDENTITY" --entitlements "$LOCAL_ENTITLEMENTS" "$APP_BUNDLE"
+    else
+        codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
+    fi
 else
     echo ""
     echo "⚠️  No development identity found - Keychain will prompt on each rebuild!"

@@ -100,8 +100,14 @@ Download the latest `.app` from [Releases](https://github.com/ChrisEdwards/gcal-
 ```bash
 git clone https://github.com/ChrisEdwards/gcal-notifier.git
 cd gcal-notifier
+make start
+```
+
+To build without launching immediately:
+
+```bash
 make package RELEASE=1
-# App bundle created in .build/
+open dist/GCalNotifier.app
 ```
 
 ## Setup Guide
@@ -206,11 +212,29 @@ This creates a self-signed certificate that persists across rebuilds.
 ### Build Commands
 ```bash
 make build          # Debug build
-make start          # Build and run
+make start          # Build, package, and launch dist/GCalNotifier.app
 make stop           # Kill running instance
 make build-release  # Optimized release build
-make package        # Create .app bundle
+make package        # Create dist/GCalNotifier.app without launching it
 ```
+
+### Local Signing and Time-Sensitive Notifications
+
+`make start`, `make package`, and `Scripts/compile_and_run.sh` create a locally signed app that opens without an Apple provisioning
+profile. The local signing path omits the restricted time-sensitive notification entitlement; signing that entitlement with the project's
+self-signed development certificate causes macOS to reject the app at launch with security-policy error 163.
+
+Everything else continues to work in a local build, including calendar sync, the in-app Stage 2 alert window, sounds, snooze and dismiss
+actions, and durable Notification Center alerts. Stage 2 Notification Center alerts use the `.active` level locally, so Focus modes can
+suppress them. Properly provisioned distribution builds keep the entitlement from `GCalNotifier.entitlements` and use `.timeSensitive`.
+
+To inspect the entitlements applied to a packaged app:
+
+```bash
+codesign -d --entitlements :- dist/GCalNotifier.app 2>/dev/null
+```
+
+If an older local package says it cannot be opened, rebuild it with `make package` or replace and launch it with `make start`.
 
 ### Testing
 ```bash

@@ -99,7 +99,7 @@ if [ -d "$BUILD_PRODUCTS_DIR" ]; then
     done < <(find "$BUILD_PRODUCTS_DIR" -maxdepth 1 -type d -name "*.bundle" | sort)
 fi
 
-# Copy entitlements for reference (useful for signing)
+# Copy entitlements for reference and local signing.
 if [ -f "GCalNotifier.entitlements" ]; then
     cp "GCalNotifier.entitlements" "$DIST_DIR/"
 fi
@@ -121,8 +121,17 @@ if [ -n "$DEVELOPER_ID_IDENTITY" ]; then
 elif [ -n "$LOCAL_SIGNING_IDENTITY" ]; then
     echo "Signing app bundle for local development..."
     SIGNING_IDENTITY="$LOCAL_SIGNING_IDENTITY"
-    if [ -f "GCalNotifier.entitlements" ]; then
-        codesign --force --entitlements "GCalNotifier.entitlements" --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
+    LOCAL_ENTITLEMENTS="$DIST_DIR/GCalNotifier.entitlements"
+    if [ -f "$LOCAL_ENTITLEMENTS" ]; then
+        if /usr/libexec/PlistBuddy \
+            -c "Print :com.apple.developer.usernotifications.time-sensitive" \
+            "$LOCAL_ENTITLEMENTS" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy \
+                -c "Delete :com.apple.developer.usernotifications.time-sensitive" \
+                "$LOCAL_ENTITLEMENTS"
+            echo "Time-sensitive notifications disabled for this local development signature."
+        fi
+        codesign --force --entitlements "$LOCAL_ENTITLEMENTS" --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
     else
         codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE"
     fi

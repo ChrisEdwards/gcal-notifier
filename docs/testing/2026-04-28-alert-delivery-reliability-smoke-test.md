@@ -32,11 +32,13 @@ For each alert row, record the event title, event start time, observed alert tim
 
 Verified on 2026-07-14 with macOS 26.5.1 and Xcode 26.6:
 
-- Stage 2 requests `UNNotificationInterruptionLevel.timeSensitive`.
-- Before the capability fix, `make package` produced a valid `GCalNotifier Dev` signature whose effective entitlements
-  omitted `com.apple.developer.usernotifications.time-sensitive`.
-- The project now declares that entitlement as a Boolean `true`. Xcode 26.6 identifies it as a public macOS
-  application capability supported by Development and Developer ID signing, with no distribution approval required.
+- The project declares `com.apple.developer.usernotifications.time-sensitive` as a Boolean `true` for properly
+  provisioned distribution builds.
+- Signing that restricted entitlement with the self-signed `GCalNotifier Dev` identity made macOS reject the app at
+  launch with security-policy error 163 because no eligible provisioning profile could validate it.
+- `make start`, `make package`, and `Scripts/compile_and_run.sh` now omit the entitlement from their generated local
+  signature. The notification adapter detects the effective entitlement and downgrades Stage 2 from `.timeSensitive`
+  to `.active` when it is absent.
 - Apple documents time-sensitive notifications as immediate, sound-capable notifications that can break through
   Notification Summary and Focus, subject to the user's notification settings.
 
@@ -47,8 +49,10 @@ codesign --verify --deep --strict --verbose=2 dist/GCalNotifier.app
 codesign -d --entitlements - dist/GCalNotifier.app
 ```
 
-The second command must show `com.apple.developer.usernotifications.time-sensitive` set to `true`. O2 remains the
-manual presentation check with notifications allowed, first without Focus and then with a Focus mode enabled.
+For a local development signature, the second command must omit
+`com.apple.developer.usernotifications.time-sensitive`. For a properly provisioned distribution build, it must show
+that entitlement set to `true`. Run O2 without Focus for a local build. Test O2 both without Focus and with Focus enabled
+for a provisioned build.
 
 ## Setup
 
@@ -95,7 +99,8 @@ Record one of `PASS`, `FAIL`, or `SKIP` for every row. `SKIP` must include a rea
 
 - Area: OS fallback
 - Steps: Create an event 4 minutes out. Sync. Quit the app before T-2. Wait for Stage 2.
-- Expected: macOS shows a Stage 2 time-sensitive notification with sound, title, context, and actions.
+- Expected: macOS shows a Stage 2 notification with sound, title, context, and actions.
+- Expected: A local build uses the active interruption level; a provisioned build uses the time-sensitive level.
 - Result:
 - Notes / Defect:
 
