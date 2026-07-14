@@ -4,6 +4,11 @@ import Testing
 @testable import GCalNotifier
 @testable import GCalNotifierCore
 
+@MainActor
+private final class NonNotifyingPanel: NSPanel {
+    override func close() {}
+}
+
 @Suite("AlertWindowController Command Tests")
 struct AlertWindowControllerCommandTests {
     @MainActor
@@ -76,6 +81,48 @@ struct AlertWindowControllerCommandTests {
         context.controller.snoozeMeeting(duration: 60)
 
         try await expectModalAlertSnoozed(context, expectedFireTime: context.now.addingTimeInterval(60))
+    }
+
+    @MainActor
+    @Test("Expired modal closes without acknowledging the alert")
+    func expiredModalClosesWithoutAcknowledgingAlert() async throws {
+        let context = try makeModalCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+        let controller = AlertWindowController(window: NonNotifyingPanel())
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        controller.setAlertEngine(context.engine)
+        controller.showAlert(for: context.event, stage: .stage2)
+
+        controller.maintainAlertVisibility(at: context.event.startTime.addingTimeInterval(5 * 60))
+        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: controller.window))
+        for _ in 0 ..< 50 {
+            if await !context.engine.scheduledAlerts.contains(where: { $0.id == context.alertId }) {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(await context.engine.scheduledAlerts.contains { $0.id == context.alertId })
+    }
+
+    @MainActor
+    @Test("Escape does not acknowledge or close the alert")
+    func escapeDoesNotAcknowledgeOrCloseAlert() async throws {
+        let context = try makeModalCommandContext()
+        defer { cleanupAlertTestTempDir(context.fileURL) }
+        await context.engine.scheduleAlerts(for: [context.event], settings: context.settings)
+        context.controller.setAlertEngine(context.engine)
+        context.controller.showAlert(for: context.event, stage: .stage2)
+
+        context.controller.cancelOperation(nil)
+        for _ in 0 ..< 50 {
+            if await !context.engine.scheduledAlerts.contains(where: { $0.id == context.alertId }) {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(await context.engine.scheduledAlerts.contains { $0.id == context.alertId })
     }
 }
 

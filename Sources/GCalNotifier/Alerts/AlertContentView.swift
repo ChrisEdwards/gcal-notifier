@@ -163,7 +163,6 @@ extension AlertContentView {
                     .frame(minWidth: 60)
             }
             .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.return, modifiers: [])
             .disabled(self.event.primaryMeetingURL == nil)
             .pointerCursor()
 
@@ -182,7 +181,6 @@ extension AlertContentView {
                 Image(systemName: "xmark")
             }
             .buttonStyle(.borderless)
-            .keyboardShortcut(.escape, modifiers: [])
             .pointerCursor()
         }
     }

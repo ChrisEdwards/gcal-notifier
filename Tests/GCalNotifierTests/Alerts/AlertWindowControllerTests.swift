@@ -60,6 +60,20 @@ private final class RecordingAlertContentProvider: AlertContentProvider {
     }
 }
 
+@MainActor
+private final class RecordingAlertWindow: NSWindow {
+    private(set) var orderFrontRegardlessCount = 0
+    private(set) var closeCount = 0
+
+    override func orderFrontRegardless() {
+        self.orderFrontRegardlessCount += 1
+    }
+
+    override func close() {
+        self.closeCount += 1
+    }
+}
+
 // MARK: - AlertWindowActions Tests
 
 @Suite("AlertWindowActions Tests")
@@ -350,6 +364,33 @@ struct ShowAlertTests {
         controller.showAlert(for: event, stage: .stage2, contextLine: "Snapshot context", contentProvider: provider)
 
         #expect(provider.capturedContextLine == "Snapshot context")
+    }
+
+    @MainActor
+    @Test("Visibility maintenance re-raises a hidden active alert")
+    func visibilityMaintenanceReraisesHiddenActiveAlert() {
+        let window = RecordingAlertWindow()
+        let controller = AlertWindowController(window: window)
+        let event = makeTestEvent(startTime: Date(timeIntervalSince1970: 1_800_000_000))
+        controller.showAlert(for: event, stage: .stage1)
+
+        controller.maintainAlertVisibility(at: event.startTime)
+
+        #expect(window.orderFrontRegardlessCount == 1)
+    }
+
+    @MainActor
+    @Test("Visibility maintenance does not re-raise an expired alert")
+    func visibilityMaintenanceDoesNotReraiseExpiredAlert() {
+        let window = RecordingAlertWindow()
+        let controller = AlertWindowController(window: window)
+        let event = makeTestEvent(startTime: Date(timeIntervalSince1970: 1_800_000_000))
+        controller.showAlert(for: event, stage: .stage1)
+
+        controller.maintainAlertVisibility(at: event.startTime.addingTimeInterval(5 * 60))
+
+        #expect(window.orderFrontRegardlessCount == 0)
+        #expect(window.closeCount == 1)
     }
 }
 

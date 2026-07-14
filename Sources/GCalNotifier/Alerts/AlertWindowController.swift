@@ -83,7 +83,6 @@ struct PlaceholderAlertContent: View {
             HStack(spacing: 12) {
                 if self.event.primaryMeetingURL != nil {
                     Button("Join") { self.actions.onJoin() }
-                        .keyboardShortcut(.return, modifiers: [])
                 }
 
                 ForEach(self.actions.snoozeDurations, id: \.self) { duration in
@@ -93,7 +92,6 @@ struct PlaceholderAlertContent: View {
                 Button("Open Calendar") { self.actions.onOpenCalendar() }
 
                 Button("Dismiss") { self.actions.onDismiss() }
-                    .keyboardShortcut(.escape, modifiers: [])
             }
         }
         .padding(24)
@@ -134,16 +132,19 @@ public struct DefaultAlertContentProvider: AlertContentProvider {
 /// - Visible on all Spaces (.canJoinAllSpaces)
 /// - Works with full-screen apps (.fullScreenAuxiliary)
 /// - Non-activating (doesn't steal focus)
-/// - Keyboard shortcuts: Return to join, Escape to dismiss
+/// - Requires deliberate button or close-button acknowledgement
 @MainActor
 public final class AlertWindowController: NSWindowController {
     // MARK: - State
 
+    private static let visibilityGracePeriod: TimeInterval = 5 * 60
+    private static let visibilityCheckInterval: TimeInterval = 20
     private var currentEvent: CalendarEvent?
     private var currentStage: AlertStage?
     private var alertEngine: AlertEngine?
-    private var isSnoozing = false
+    private var isClosingWithoutAcknowledgment = false
     private var isCompletingAction = false
+    private var visibilityTask: Task<Void, Never>?
     private var urlOpener: @MainActor @Sendable (URL) -> Void = { url in
         NSWorkspace.shared.open(url)
     }
@@ -191,6 +192,10 @@ public final class AlertWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        self.visibilityTask?.cancel()
     }
 
     // MARK: - Configuration
@@ -251,6 +256,43 @@ public final class AlertWindowController: NSWindowController {
         window?.orderFrontRegardless()
         return true
     }
+
+    func maintainAlertVisibility(at date: Date) {
+        guard let event = currentEvent else {
+            self.stopVisibilityWatchdog()
+            return
+        }
+        guard date < event.startTime.addingTimeInterval(Self.visibilityGracePeriod) else {
+            self.isClosingWithoutAcknowledgment = true
+            self.stopVisibilityWatchdog()
+            window?.close()
+            return
+        }
+        guard window?.isVisible == false else { return }
+        window?.orderFrontRegardless()
+    }
+
+    private func startVisibilityWatchdog() {
+        self.stopVisibilityWatchdog()
+        guard !Self.isRunningTests, self.currentEvent != nil else { return }
+
+        self.visibilityTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(Self.visibilityCheckInterval))
+                } catch {
+                    return
+                }
+                guard let self else { return }
+                self.maintainAlertVisibility(at: Date())
+            }
+        }
+    }
+
+    private func stopVisibilityWatchdog() {
+        self.visibilityTask?.cancel()
+        self.visibilityTask = nil
+    }
 }
 
 // MARK: - Show Alert
@@ -271,40 +313,15 @@ public extension AlertWindowController {
         snoozeDurations: [TimeInterval] = AlertSnoozePolicy.supportedDurations,
         contextLine: String? = nil
     ) {
-        self.currentEvent = event
-        self.currentStage = stage
-
-        let actions = AlertWindowActions(
-            onJoin: { [weak self] in self?.joinMeeting() },
-            onSnooze: { [weak self] duration in self?.snoozeMeeting(duration: duration) },
-            onOpenCalendar: { [weak self] in self?.openInCalendar() },
-            onDismiss: { [weak self] in self?.dismiss() },
-            snoozeDurations: snoozeDurations
-        )
-        let context = AlertContentContext(
+        self.showAlert(
+            for: event,
             stage: stage,
-            isSnoozed: snoozed,
+            snoozed: snoozed,
             snoozeContext: snoozeContext,
-            contextLine: contextLine
+            snoozeDurations: snoozeDurations,
+            contextLine: contextLine,
+            contentProvider: DefaultAlertContentProvider()
         )
-
-        // Create content view using default provider
-        let provider = DefaultAlertContentProvider()
-        let contentView = provider.makeContentView(
-            event: event,
-            context: context,
-            actions: actions
-        )
-
-        let hostingView = AlertHostingView(rootView: contentView)
-        window?.contentView = hostingView
-
-        // Size to fit content
-        window?.setContentSize(hostingView.fittingSize)
-
-        if self.present() {
-            Logger.alerts.info("Alert shown for event: \(event.id) stage: \(stage.rawValue)")
-        }
     }
 
     /// Shows an alert using a custom content provider.
@@ -349,6 +366,7 @@ public extension AlertWindowController {
         if self.present() {
             Logger.alerts.info("Alert shown for event: \(event.id) stage: \(stage.rawValue)")
         }
+        self.startVisibilityWatchdog()
     }
 }
 
@@ -382,7 +400,8 @@ extension AlertWindowController {
             let result = await engine.handleAlertCommand(.snooze(alertId: alertId, duration: duration))
             if case .snoozed = result {
                 Logger.alerts.info("Snoozed alert: \(alertId) for \(Int(duration / 60))m")
-                self.isSnoozing = true
+                self.stopVisibilityWatchdog()
+                self.isClosingWithoutAcknowledgment = true
                 close() // Close but don't acknowledge
             } else if case let .rejected(_, error) = result {
                 Logger.alerts.error("Failed to snooze: \(error.localizedDescription)")
@@ -421,6 +440,7 @@ extension AlertWindowController {
         _ command: AlertCommand,
         completion: @escaping @MainActor (AlertCommandResult) -> Void
     ) {
+        self.stopVisibilityWatchdog()
         guard let engine = alertEngine else {
             close()
             return
@@ -439,13 +459,16 @@ extension AlertWindowController {
 
 extension AlertWindowController: NSWindowDelegate {
     public func windowWillClose(_: Notification) {
+        self.stopVisibilityWatchdog()
         // Acknowledge when window is closed via close button
         defer {
-            self.isSnoozing = false
+            self.isClosingWithoutAcknowledgment = false
             self.isCompletingAction = false
+            self.currentEvent = nil
+            self.currentStage = nil
         }
 
-        guard !self.isSnoozing else { return }
+        guard !self.isClosingWithoutAcknowledgment else { return }
         guard !self.isCompletingAction else { return }
         if let event = currentEvent, let stage = currentStage, let engine = alertEngine {
             let alertId = event.alertIdentifier(for: stage)
@@ -459,8 +482,6 @@ extension AlertWindowController: NSWindowDelegate {
 // MARK: - Keyboard Support
 
 public extension AlertWindowController {
-    /// Handle Escape key to dismiss the alert.
-    override func cancelOperation(_: Any?) {
-        self.dismiss()
-    }
+    /// Escape intentionally does nothing so a keystroke cannot acknowledge an alert.
+    override func cancelOperation(_: Any?) {}
 }
