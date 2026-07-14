@@ -52,54 +52,7 @@ public protocol AlertContentProvider {
     ) -> ContentView
 }
 
-// MARK: - Default Placeholder Content
-
-/// Placeholder content view until AlertContentView is implemented.
-struct PlaceholderAlertContent: View {
-    let event: CalendarEvent
-    let stage: AlertStage
-    let isSnoozed: Bool
-    let snoozeContext: String?
-    let actions: AlertWindowActions
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text(self.stage == .stage1 ? "Meeting in 10 minutes" : "Meeting in 2 minutes")
-                .font(.headline)
-
-            Text(self.event.title)
-                .font(.title2)
-
-            Text(self.event.startTime.formatted(date: .omitted, time: .shortened))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            if self.isSnoozed, let context = snoozeContext {
-                Text("Snoozed from: \(context)")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-
-            HStack(spacing: 12) {
-                if self.event.primaryMeetingURL != nil {
-                    Button("Join") { self.actions.onJoin() }
-                }
-
-                ForEach(self.actions.snoozeDurations, id: \.self) { duration in
-                    Button("Snooze \(Int(duration / 60))m") { self.actions.onSnooze(duration) }
-                }
-
-                Button("Open Calendar") { self.actions.onOpenCalendar() }
-
-                Button("Dismiss") { self.actions.onDismiss() }
-            }
-        }
-        .padding(24)
-        .frame(minWidth: 350, minHeight: 180)
-    }
-}
-
-/// Default content provider using placeholder view.
+/// Default content provider using the standard alert view.
 public struct DefaultAlertContentProvider: AlertContentProvider {
     public init() {}
 
@@ -145,6 +98,8 @@ public final class AlertWindowController: NSWindowController {
     private var isClosingWithoutAcknowledgment = false
     private var isCompletingAction = false
     private var visibilityTask: Task<Void, Never>?
+    private var windowClosedHandler: (() -> Void)?
+    private(set) var alertStackIndex = 0
     private var urlOpener: @MainActor @Sendable (URL) -> Void = { url in
         NSWorkspace.shared.open(url)
     }
@@ -209,6 +164,17 @@ public final class AlertWindowController: NSWindowController {
         self.urlOpener = opener
     }
 
+    func setWindowClosedHandler(_ handler: @escaping () -> Void) {
+        self.windowClosedHandler = handler
+    }
+
+    func setAlertStackIndex(_ index: Int) {
+        self.alertStackIndex = max(0, index)
+        if window?.isVisible == true {
+            self.positionWindow()
+        }
+    }
+
     private func configureWindow() {
         guard let panel = window as? NSPanel else { return }
 
@@ -241,7 +207,9 @@ public final class AlertWindowController: NSWindowController {
         let windowFrame = window?.frame ?? .zero
 
         let xPos = screenFrame.midX - windowFrame.width / 2
-        let yPos = screenFrame.minY + screenFrame.height * 0.6 // Upper-middle
+        let firstWindowY = screenFrame.minY + screenFrame.height * 0.6
+        let stackOffset = CGFloat(self.alertStackIndex) * (windowFrame.height + 12)
+        let yPos = max(screenFrame.minY, firstWindowY - stackOffset)
 
         window?.setFrameOrigin(NSPoint(x: xPos, y: yPos))
     }
@@ -466,6 +434,7 @@ extension AlertWindowController: NSWindowDelegate {
             self.isCompletingAction = false
             self.currentEvent = nil
             self.currentStage = nil
+            self.windowClosedHandler?()
         }
 
         guard !self.isClosingWithoutAcknowledgment else { return }

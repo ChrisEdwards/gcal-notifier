@@ -11,6 +11,9 @@ public final class WindowAlertDelivery: AlertDelivery {
     private let settings: SettingsStore
     private let scheduler: NotificationScheduler
     private let urlOpener: @MainActor @Sendable (URL) -> Void
+    private let windowControllerFactory: @MainActor () -> AlertWindowController
+    private var alertWindowControllers: [String: AlertWindowController] = [:]
+    private var activeEventOrder: [String] = []
 
     /// Alert engine - set after construction to break circular dependency
     private var alertEngine: AlertEngine?
@@ -25,13 +28,15 @@ public final class WindowAlertDelivery: AlertDelivery {
         scheduler: NotificationScheduler,
         urlOpener: @escaping @MainActor @Sendable (URL) -> Void = { url in
             NSWorkspace.shared.open(url)
-        }
+        },
+        windowControllerFactory: @escaping @MainActor () -> AlertWindowController = { AlertWindowController() }
     ) {
         self.windowController = windowController
         self.eventCache = eventCache
         self.settings = settings
         self.scheduler = scheduler
         self.urlOpener = urlOpener
+        self.windowControllerFactory = windowControllerFactory
     }
 
     /// Sets the alert engine after construction (breaks circular dependency)
@@ -56,14 +61,15 @@ public final class WindowAlertDelivery: AlertDelivery {
     private func showAlert(_ alert: ScheduledAlert) async {
         let display = await self.displayEvent(for: alert)
         let event = display.event
+        let windowController = self.windowController(for: alert.eventId)
         let isSnoozed = alert.snoozeCount > 0
         let snoozeContext = isSnoozed ? "Snoozed \(alert.snoozeCount) time(s)" : nil
         let snoozeDurations = await self.snoozeDurations(for: alert)
 
         if let engine = alertEngine {
-            self.windowController.setAlertEngine(engine)
+            windowController.setAlertEngine(engine)
         }
-        self.windowController.showAlert(
+        windowController.showAlert(
             for: event,
             stage: alert.stage,
             snoozed: isSnoozed,
@@ -79,6 +85,35 @@ public final class WindowAlertDelivery: AlertDelivery {
         let soundName = alert.stage == .stage1 ? self.settings.stage1Sound : self.settings.stage2Sound
         SoundPlayer.shared.play(named: soundName, customPath: self.settings.customSoundPath)
         self.onAlertDelivered?()
+    }
+
+    private func windowController(for eventId: String) -> AlertWindowController {
+        if let existing = alertWindowControllers[eventId] {
+            return existing
+        }
+        let primaryIsActive = self.alertWindowControllers.values.contains { $0 === self.windowController }
+        let controller = primaryIsActive ? self.windowControllerFactory() : self.windowController
+        controller.setWindowClosedHandler { [weak self, weak controller] in
+            guard let self, let controller else { return }
+            self.removeWindowController(for: eventId, controller: controller)
+        }
+        self.alertWindowControllers[eventId] = controller
+        self.activeEventOrder.append(eventId)
+        self.restackWindowControllers()
+        return controller
+    }
+
+    private func removeWindowController(for eventId: String, controller: AlertWindowController) {
+        guard self.alertWindowControllers[eventId] === controller else { return }
+        self.alertWindowControllers.removeValue(forKey: eventId)
+        self.activeEventOrder.removeAll { $0 == eventId }
+        self.restackWindowControllers()
+    }
+
+    private func restackWindowControllers() {
+        for (index, eventId) in self.activeEventOrder.enumerated() {
+            self.alertWindowControllers[eventId]?.setAlertStackIndex(index)
+        }
     }
 
     @MainActor
