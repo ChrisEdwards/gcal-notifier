@@ -19,9 +19,10 @@ public protocol SleepWakeHandlerDelegate: AnyObject, Sendable {
 /// Handles system sleep and wake events for proper recovery.
 ///
 /// When the system wakes from sleep, this handler:
-/// 1. Re-arms future local modal timers against the current wall clock
-/// 2. Triggers an immediate calendar sync
-/// 3. Lets alert reconciliation mirror the desired state into OS notifications and local modal triggers
+/// 1. Delivers alerts whose fire times passed during sleep
+/// 2. Re-arms future local modal timers against the current wall clock
+/// 3. Triggers an immediate calendar sync
+/// 4. Lets alert reconciliation mirror the desired state into OS notifications and local modal triggers
 ///
 /// ## Usage
 /// ```swift
@@ -115,20 +116,24 @@ public final class SleepWakeHandler {
 
 /// Coordinates wake recovery without reconstructing missed exact-time modal delivery.
 struct WakeRecoveryCoordinator {
+    private let recoverMissedAlerts: @MainActor @Sendable () async -> Void
     private let rearmScheduledTimers: @MainActor @Sendable () async -> Void
     private let syncAndReconcile: @MainActor @Sendable () async -> Void
 
     init(
+        recoverMissedAlerts: @escaping @MainActor @Sendable () async -> Void,
         rearmScheduledTimers: @escaping @MainActor @Sendable () async -> Void,
         syncAndReconcile: @escaping @MainActor @Sendable () async -> Void
     ) {
+        self.recoverMissedAlerts = recoverMissedAlerts
         self.rearmScheduledTimers = rearmScheduledTimers
         self.syncAndReconcile = syncAndReconcile
     }
 
     @MainActor
     func recoverFromWake() async {
-        Logger.app.info("System woke - re-arming timers, syncing, and reconciling alerts")
+        Logger.app.info("System woke - recovering alerts, re-arming timers, and syncing")
+        await self.recoverMissedAlerts()
         await self.rearmScheduledTimers()
         await self.syncAndReconcile()
     }
@@ -150,6 +155,14 @@ extension AppDelegate: SleepWakeHandlerDelegate {
     @MainActor
     private func recoverFromSystemWake() async {
         let recovery = WakeRecoveryCoordinator(
+            recoverMissedAlerts: {
+                do {
+                    let engine = try await self.requireAlertEngineReady()
+                    _ = await engine.checkForMissedAlerts()
+                } catch {
+                    Logger.app.error("Could not recover missed alerts after wake: \(error.localizedDescription)")
+                }
+            },
             rearmScheduledTimers: {
                 do {
                     let engine = try await self.requireAlertEngineReady()

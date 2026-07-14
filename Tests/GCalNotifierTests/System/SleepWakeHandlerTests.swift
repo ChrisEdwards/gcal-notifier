@@ -23,9 +23,15 @@ private final class MockSleepWakeDelegate: SleepWakeHandlerDelegate {
 }
 
 private actor WakeRecoverySpy {
+    private(set) var missedRecoveryCount = 0
     private(set) var rearmCount = 0
     private(set) var syncCount = 0
     private(set) var operations: [String] = []
+
+    func recoverMissedAlerts() {
+        self.missedRecoveryCount += 1
+        self.operations.append("missed")
+    }
 
     func rearmScheduledTimers() {
         self.rearmCount += 1
@@ -101,14 +107,16 @@ struct SleepWakeHandlerTests {
     func wakeRecoveryRearmsTimersBeforeSyncReconciliation() async {
         let spy = WakeRecoverySpy()
         let recovery = WakeRecoveryCoordinator(
+            recoverMissedAlerts: { await spy.recoverMissedAlerts() },
             rearmScheduledTimers: { await spy.rearmScheduledTimers() },
             syncAndReconcile: { await spy.syncAndReconcile() }
         )
 
         await recovery.recoverFromWake()
 
+        #expect(await spy.missedRecoveryCount == 1)
         #expect(await spy.rearmCount == 1)
         #expect(await spy.syncCount == 1)
-        #expect(await spy.operations == ["rearm", "sync"])
+        #expect(await spy.operations == ["missed", "rearm", "sync"])
     }
 }

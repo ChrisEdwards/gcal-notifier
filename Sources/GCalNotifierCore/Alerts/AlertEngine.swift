@@ -2,7 +2,7 @@ import Foundation
 
 public actor AlertEngine {
     private let alertsStore: ScheduledAlertsStore
-    private let scheduler: AlertScheduler
+    let scheduler: AlertScheduler
     private let durableNotificationScheduler: any DurableAlertNotificationScheduler
     let delivery: AlertDelivery
     let dateProvider: @Sendable () -> Date
@@ -159,6 +159,7 @@ public actor AlertEngine {
             return event.startTime == startTime
         }
         await self.scheduleAlerts(for: newEvents, settings: settings)
+        _ = await self.checkForMissedAlerts()
     }
 
     public func reconcileOnRelaunch() async throws {
@@ -175,6 +176,7 @@ public actor AlertEngine {
                 await self.scheduleTimer(for: alert)
                 await self.scheduleDurableNotificationIfNeeded(for: alert)
             }
+            _ = await self.checkForMissedAlerts()
             if recoverableAlerts.count != persistedAlerts.count {
                 await self.persistAlerts()
             }
@@ -340,21 +342,6 @@ extension AlertEngine {
         await self.cancelScheduledDelivery(for: alert, deliveredNotificationPolicy: .removeDelivered)
     }
 
-    func scheduleTimer(for alert: ScheduledAlert) async {
-        await self.scheduler.schedule(
-            alertId: alert.id,
-            fireDate: alert.scheduledFireTime
-        ) { [weak self] in
-            Task {
-                await self?.handleAlertFired(
-                    alertId: alert.id,
-                    expectedFireTime: alert.scheduledFireTime
-                )
-            }
-        }
-        AlertDiagnostics.log(.localModalTriggerScheduled, alert: alert)
-    }
-
     private func scheduleDurableNotificationIfNeeded(for alert: ScheduledAlert) async {
         await self.durableNotificationScheduler.scheduleNotification(
             for: alert,
@@ -374,7 +361,7 @@ extension AlertEngine {
         AlertDiagnostics.log(.scheduledEffectsCanceled, alert: alert)
     }
 
-    private func handleAlertFired(alertId: String, expectedFireTime: Date) async {
+    func handleAlertFired(alertId: String, expectedFireTime: Date) async {
         guard let alert = alerts[alertId] else { AlertDiagnostics.logMissingAlertRecord(alertId: alertId); return }
         guard alert.scheduledFireTime == expectedFireTime else {
             AlertDiagnostics.logStaleLocalTriggerGeneration(alert)

@@ -29,6 +29,7 @@ private func makeTestAlert(
     scheduledFireTime: Date = Date(),
     snoozeCount: Int = 0,
     originalFireTime: Date? = nil,
+    missedDeliveryTime: Date? = nil,
     eventTitle: String = "Test Meeting",
     eventStartTime: Date = Date().addingTimeInterval(600),
     eventEndTime: Date? = nil,
@@ -44,6 +45,7 @@ private func makeTestAlert(
         scheduledFireTime: scheduledFireTime,
         snoozeCount: snoozeCount,
         originalFireTime: originalFireTime,
+        missedDeliveryTime: missedDeliveryTime,
         eventTitle: eventTitle,
         eventStartTime: eventStartTime,
         eventEndTime: eventEndTime,
@@ -159,6 +161,23 @@ struct ScheduledAlertsStoreSaveAndLoadTests {
         #expect(loadedAlert.originalFireTime == originalTime)
         #expect(loadedAlert.scheduledFireTime == snoozedTime)
         #expect(loadedAlert.wasSnoozed)
+    }
+
+    @Test("Missed-alert delivery marker persists")
+    func missedAlertDeliveryMarkerPersists() async throws {
+        let fileURL = makeTempFileURL()
+        defer { cleanupTempDir(fileURL) }
+        let store = ScheduledAlertsStore(fileURL: fileURL)
+        let missedDeliveryTime = Date(timeIntervalSince1970: 1_700_000_300)
+        let alert = makeTestAlert(
+            id: "recovered-alert",
+            missedDeliveryTime: missedDeliveryTime
+        )
+
+        try await store.save([alert])
+        let loaded = try await store.load()
+
+        #expect(loaded.first?.missedDeliveryTime == missedDeliveryTime)
     }
 
     @Test("Stage 2 presentation snapshot persists")

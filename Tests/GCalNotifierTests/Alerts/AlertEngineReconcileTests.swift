@@ -213,6 +213,32 @@ struct AlertEngineReconcileTests {
         let remaining = await engine.scheduledAlerts
         #expect(remaining.isEmpty)
     }
+
+    @Test("Reconcile delivers an alert whose fire time was missed between syncs")
+    func reconcileDeliversAlertMissedBetweenSyncs() async throws {
+        let fileURL = makeAlertTestTempFileURL()
+        defer { cleanupAlertTestTempDir(fileURL) }
+        let scheduler = MockAlertScheduler()
+        let delivery = MockAlertDelivery()
+        let now = SendableBox(Date(timeIntervalSince1970: 1_700_000_000))
+        let engine = AlertEngine(
+            alertsStore: ScheduledAlertsStore(fileURL: fileURL),
+            scheduler: scheduler,
+            delivery: delivery,
+            dateProvider: { now.value }
+        )
+        let event = makeAlertTestEvent(
+            id: "missed-between-syncs",
+            startTime: now.value.addingTimeInterval(20 * 60)
+        )
+        let settings = try makeAlertTestSettings(stage1Minutes: 10, stage2Minutes: 0)
+        await engine.scheduleAlerts(for: [event], settings: settings)
+        now.value = now.value.addingTimeInterval(15 * 60)
+
+        await engine.reconcile(newEvents: [event], settings: settings)
+
+        #expect(await delivery.deliveredAlerts.map(\.id) == [event.alertIdentifier(for: .stage1)])
+    }
 }
 
 // MARK: - Alert Delivery Tests

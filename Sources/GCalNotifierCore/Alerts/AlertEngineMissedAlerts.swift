@@ -13,7 +13,9 @@ public extension AlertEngine {
     func checkForMissedAlerts() async -> [MissedAlertResult] {
         let now = self.dateProvider()
         var results: [MissedAlertResult] = []
-        let missedAlerts = self.alerts.values.filter { $0.scheduledFireTime < now }
+        let missedAlerts = self.alerts.values.filter {
+            $0.scheduledFireTime < now && $0.missedDeliveryTime == nil
+        }
         for alert in missedAlerts {
             let timeSinceMeetingStart = now.timeIntervalSince(alert.eventStartTime)
             let result: MissedAlertResult
@@ -51,6 +53,7 @@ public extension AlertEngine {
             scheduledFireTime: now,
             snoozeCount: alert.snoozeCount,
             originalFireTime: alert.originalFireTime,
+            missedDeliveryTime: now,
             eventTitle: alert.eventTitle,
             eventStartTime: alert.eventStartTime,
             eventEndTime: alert.eventEndTime,

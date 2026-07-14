@@ -259,11 +259,23 @@ struct AlertEngineMissedAlertsTests {
         #expect(deliveredAlerts.count == 2)
     }
 
+    @Test("checkForMissedAlerts delivers each recovered alert only once")
+    func checkForMissedAlertsDoesNotRedeliverRecoveredAlerts() async throws {
+        let scenario = try await setupMultipleMissedAlertsScenario()
+        scenario.dateProvider.advance(by: 1)
+
+        let repeatedResults = await scenario.engine.checkForMissedAlerts()
+
+        #expect(repeatedResults.isEmpty)
+        #expect(await scenario.delivery.deliveredAlerts.count == 2)
+    }
+
     // MARK: - Test Helpers
 
     private struct MissedAlertScenarioResult {
         let engine: AlertEngine
         let delivery: MockAlertDelivery
+        let dateProvider: MockDateProvider
         let results: [MissedAlertResult]
     }
 
@@ -327,7 +339,12 @@ struct AlertEngineMissedAlertsTests {
         dateProvider.advance(by: 22 * 60)
         let missedResults = await engine.checkForMissedAlerts()
 
-        return MissedAlertScenarioResult(engine: engine, delivery: delivery, results: missedResults)
+        return MissedAlertScenarioResult(
+            engine: engine,
+            delivery: delivery,
+            dateProvider: dateProvider,
+            results: missedResults
+        )
     }
 
     private func countMissedAlertTypes(_ results: [MissedAlertResult]) -> MissedAlertCounts {

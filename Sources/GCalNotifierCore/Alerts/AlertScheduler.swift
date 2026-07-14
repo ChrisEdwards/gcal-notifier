@@ -67,3 +67,20 @@ public actor DispatchAlertScheduler: AlertScheduler {
         self.timers.removeAll()
     }
 }
+
+extension AlertEngine {
+    func scheduleTimer(for alert: ScheduledAlert) async {
+        await self.scheduler.schedule(
+            alertId: alert.id,
+            fireDate: alert.scheduledFireTime
+        ) { [weak self] in
+            Task {
+                await self?.handleAlertFired(
+                    alertId: alert.id,
+                    expectedFireTime: alert.scheduledFireTime
+                )
+            }
+        }
+        AlertDiagnostics.log(.localModalTriggerScheduled, alert: alert)
+    }
+}

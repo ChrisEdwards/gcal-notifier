@@ -53,8 +53,8 @@ struct AlertEngineStage2ModalTests {
         #expect(removedDeliveredNotifications.isEmpty)
     }
 
-    @Test("Wake reconciliation preserves delivered notification for relevant past alert")
-    func wakeReconciliationPreservesDeliveredNotificationForRelevantPastAlert() async throws {
+    @Test("Wake reconciliation delivers relevant missed alert and preserves delivered notification")
+    func wakeReconciliationDeliversRelevantMissedAlert() async throws {
         nonisolated(unsafe) var currentTime = stage2ModalBaseTime
         let context = try makeStage2ModalContext(dateProvider: { currentTime })
         defer { cleanupAlertTestTempDir(context.fileURL) }
@@ -68,9 +68,10 @@ struct AlertEngineStage2ModalTests {
 
         let remaining = await context.engine.scheduledAlerts
         #expect(remaining.contains { $0.id == context.alertId })
-        #expect(await context.scheduler.cancelledAlertIds.isEmpty)
+        #expect(await context.delivery.deliveredAlerts.map(\.id) == [context.alertId])
+        #expect(await context.scheduler.cancelledAlertIds == [context.alertId])
         #expect(await context.scheduler.scheduledAlerts.isEmpty)
-        #expect(await context.durableScheduler.cancelledNotificationIds.isEmpty)
+        #expect(await context.durableScheduler.cancelledNotificationIds == [context.alertId])
         #expect(await context.durableScheduler.removedDeliveredNotificationIds.isEmpty)
         #expect(await context.durableScheduler.scheduledNotifications.isEmpty)
     }

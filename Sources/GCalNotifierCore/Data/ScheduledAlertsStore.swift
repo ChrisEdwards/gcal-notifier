@@ -124,6 +124,9 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
     /// Original fire time before any snoozes (nil if never snoozed).
     public let originalFireTime: Date?
 
+    /// When an overdue alert was delivered by missed-alert recovery.
+    public let missedDeliveryTime: Date?
+
     /// Title of the event (for display in alert modal).
     public let eventTitle: String
 
@@ -155,6 +158,7 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         scheduledFireTime: Date,
         snoozeCount: Int = 0,
         originalFireTime: Date? = nil,
+        missedDeliveryTime: Date? = nil,
         eventTitle: String,
         eventStartTime: Date,
         eventEndTime: Date? = nil,
@@ -178,6 +182,7 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         self.scheduledFireTime = scheduledFireTime
         self.snoozeCount = snoozeCount
         self.originalFireTime = originalFireTime
+        self.missedDeliveryTime = missedDeliveryTime
         self.eventTitle = eventTitle
         self.eventStartTime = eventStartTime
         self.eventEndTime = resolvedEventEndTime
@@ -208,6 +213,7 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         case scheduledFireTime
         case snoozeCount
         case originalFireTime
+        case missedDeliveryTime
         case eventTitle
         case eventStartTime
         case eventEndTime
@@ -226,6 +232,7 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         let scheduledFireTime = try container.decode(Date.self, forKey: .scheduledFireTime)
         let snoozeCount = try container.decode(Int.self, forKey: .snoozeCount)
         let originalFireTime = try container.decodeIfPresent(Date.self, forKey: .originalFireTime)
+        let missedDeliveryTime = try container.decodeIfPresent(Date.self, forKey: .missedDeliveryTime)
         let eventTitle = try container.decode(String.self, forKey: .eventTitle)
         let eventStartTime = try container.decode(Date.self, forKey: .eventStartTime)
         let notificationPayload = try container.decodeIfPresent(
@@ -245,6 +252,7 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
             scheduledFireTime: scheduledFireTime,
             snoozeCount: snoozeCount,
             originalFireTime: originalFireTime,
+            missedDeliveryTime: missedDeliveryTime,
             eventTitle: eventTitle,
             eventStartTime: eventStartTime,
             eventEndTime: eventEndTime,
@@ -264,6 +272,7 @@ public struct ScheduledAlert: Codable, Sendable, Equatable, Identifiable {
         try container.encode(self.scheduledFireTime, forKey: .scheduledFireTime)
         try container.encode(self.snoozeCount, forKey: .snoozeCount)
         try container.encodeIfPresent(self.originalFireTime, forKey: .originalFireTime)
+        try container.encodeIfPresent(self.missedDeliveryTime, forKey: .missedDeliveryTime)
         try container.encode(self.eventTitle, forKey: .eventTitle)
         try container.encode(self.eventStartTime, forKey: .eventStartTime)
         try container.encode(self.eventEndTime, forKey: .eventEndTime)
@@ -336,6 +345,7 @@ public extension ScheduledAlert {
             scheduledFireTime: self.scheduledFireTime,
             snoozeCount: self.snoozeCount,
             originalFireTime: self.originalFireTime,
+            missedDeliveryTime: self.missedDeliveryTime,
             eventTitle: alert.eventTitle,
             eventStartTime: alert.eventStartTime,
             eventEndTime: alert.eventEndTime,

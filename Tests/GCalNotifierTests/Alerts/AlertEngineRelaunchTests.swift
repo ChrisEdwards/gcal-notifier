@@ -30,8 +30,8 @@ struct AlertEngineReconcileOnRelaunchTests {
         #expect(await context.engine.scheduledAlerts.isEmpty)
     }
 
-    @Test("Reconcile on relaunch preserves overdue relevant alerts without modal trigger")
-    func reconcileOnRelaunchPreservesOverdueRelevantAlertsWithoutModalTrigger() async throws {
+    @Test("Reconcile on relaunch immediately delivers overdue relevant alerts")
+    func reconcileOnRelaunchDeliversOverdueRelevantAlerts() async throws {
         let context = try await makeRelaunchContext(alert: makeOverdueRelevantRelaunchAlert())
         defer { cleanupAlertTestTempDir(context.fileURL) }
 
@@ -40,7 +40,8 @@ struct AlertEngineReconcileOnRelaunchTests {
         #expect(await context.engine.scheduledAlerts.map(\.id) == ["delivered-alert"])
         #expect(await context.scheduler.scheduledAlerts.isEmpty)
         #expect(await context.durableScheduler.scheduledNotifications.isEmpty)
-        #expect(await context.durableScheduler.cancelledNotificationIds.isEmpty)
+        #expect(await context.durableScheduler.cancelledNotificationIds == ["delivered-alert"])
+        #expect(await context.delivery.deliveredAlerts.map(\.id) == ["delivered-alert"])
     }
 
     @Test("Reconcile on relaunch only runs once")
@@ -108,6 +109,7 @@ private struct RelaunchContext {
     let store: ScheduledAlertsStore
     let scheduler: MockAlertScheduler
     let durableScheduler: MockDurableAlertNotificationScheduler
+    let delivery: MockAlertDelivery
     let engine: AlertEngine
     let alert: ScheduledAlert
 }
@@ -126,10 +128,11 @@ private func makeRelaunchContext(
     let store = ScheduledAlertsStore(fileURL: fileURL)
     let scheduler = MockAlertScheduler()
     let durableScheduler = MockDurableAlertNotificationScheduler()
+    let delivery = MockAlertDelivery()
     let engine = AlertEngine(
         alertsStore: store,
         scheduler: scheduler,
-        delivery: MockAlertDelivery(),
+        delivery: delivery,
         durableNotificationScheduler: durableScheduler,
         dateProvider: { relaunchBaseTime }
     )
@@ -138,6 +141,7 @@ private func makeRelaunchContext(
         store: store,
         scheduler: scheduler,
         durableScheduler: durableScheduler,
+        delivery: delivery,
         engine: engine,
         alert: alert
     )
