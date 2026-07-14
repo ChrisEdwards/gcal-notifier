@@ -169,12 +169,9 @@ public final class AlertWindowController: NSWindowController {
     // MARK: - Initialization
 
     public convenience init() {
-        // Use a regular panel that activates normally - this ensures proper cursor
-        // handling and standard window behavior. The panel will float above other
-        // windows but activate when the user interacts with it.
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .nonactivatingPanel],
             backing: .buffered,
             defer: true
         )
@@ -212,6 +209,8 @@ public final class AlertWindowController: NSWindowController {
 
         // Floating above other windows
         panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.becomesKeyOnlyIfNeeded = true
 
         // Visible on all Spaces and full-screen apps
         panel.collectionBehavior = [
@@ -240,6 +239,17 @@ public final class AlertWindowController: NSWindowController {
         let yPos = screenFrame.minY + screenFrame.height * 0.6 // Upper-middle
 
         window?.setFrameOrigin(NSPoint(x: xPos, y: yPos))
+    }
+
+    private func present() -> Bool {
+        guard !Self.isRunningTests else {
+            Logger.alerts.debug("Skipping window display in test environment")
+            return false
+        }
+
+        self.positionWindow()
+        window?.orderFrontRegardless()
+        return true
     }
 }
 
@@ -292,21 +302,9 @@ public extension AlertWindowController {
         // Size to fit content
         window?.setContentSize(hostingView.fittingSize)
 
-        // Skip showing actual window during tests to prevent UI lockups
-        guard !Self.isRunningTests else {
-            Logger.alerts.debug("Skipping window display in test environment")
-            return
+        if self.present() {
+            Logger.alerts.info("Alert shown for event: \(event.id) stage: \(stage.rawValue)")
         }
-
-        // Activate app (required for menu bar apps to show windows)
-        NSApp.activate(ignoringOtherApps: true)
-
-        // Show and bring to front
-        self.positionWindow()
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-
-        Logger.alerts.info("Alert shown for event: \(event.id) stage: \(stage.rawValue)")
     }
 
     /// Shows an alert using a custom content provider.
@@ -348,21 +346,9 @@ public extension AlertWindowController {
         // Size to fit content
         window?.setContentSize(hostingView.fittingSize)
 
-        // Skip showing actual window during tests to prevent UI lockups
-        guard !Self.isRunningTests else {
-            Logger.alerts.debug("Skipping window display in test environment")
-            return
+        if self.present() {
+            Logger.alerts.info("Alert shown for event: \(event.id) stage: \(stage.rawValue)")
         }
-
-        // Activate app (required for menu bar apps to show windows)
-        NSApp.activate(ignoringOtherApps: true)
-
-        // Show and bring to front
-        self.positionWindow()
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-
-        Logger.alerts.info("Alert shown for event: \(event.id) stage: \(stage.rawValue)")
     }
 }
 

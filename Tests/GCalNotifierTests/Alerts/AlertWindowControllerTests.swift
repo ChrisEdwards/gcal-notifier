@@ -198,15 +198,34 @@ struct AlertWindowControllerTests {
     }
 
     @MainActor
-    @Test("Panel uses standard activating style for proper cursor handling")
-    func panelUsesActivatingStyle() {
+    @Test("Panel does not activate the app or steal keyboard focus")
+    func panelUsesNonactivatingStyle() {
         let controller = AlertWindowController()
         guard let panel = controller.window as? NSPanel else {
             Issue.record("Window is not an NSPanel")
             return
         }
-        // Panel should NOT be non-activating to ensure proper cursor and interaction behavior
-        #expect(!panel.styleMask.contains(.nonactivatingPanel))
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
+    }
+
+    @MainActor
+    @Test("Panel remains visible when another app becomes active")
+    func panelDoesNotHideOnDeactivate() {
+        let panel = NSPanel()
+        panel.hidesOnDeactivate = true
+        _ = AlertWindowController(window: panel)
+
+        #expect(!panel.hidesOnDeactivate)
+    }
+
+    @MainActor
+    @Test("Panel becomes key only when an interaction requires it")
+    func panelBecomesKeyOnlyIfNeeded() {
+        let panel = NSPanel()
+        panel.becomesKeyOnlyIfNeeded = false
+        _ = AlertWindowController(window: panel)
+
+        #expect(panel.becomesKeyOnlyIfNeeded)
     }
 }
 
