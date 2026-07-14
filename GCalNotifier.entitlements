@@ -10,6 +10,10 @@
     <key>com.apple.security.network.client</key>
     <true/>
 
+    <!-- Allow urgent Stage 2 notifications to break through Focus when the user permits it -->
+    <key>com.apple.developer.usernotifications.time-sensitive</key>
+    <true/>
+
     <!-- Keychain access for secure credential storage -->
     <key>com.apple.security.keychain-access-groups</key>
     <array>

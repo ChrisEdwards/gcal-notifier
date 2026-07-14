@@ -28,6 +28,28 @@ log stream --style compact --predicate 'subsystem == "com.gcal-notifier"'
 For each alert row, record the event title, event start time, observed alert time, visible surface, action taken, and any
 `alert_diagnostic` lines that mention the alert id.
 
+## Time-Sensitive Notification Capability Verification
+
+Verified on 2026-07-14 with macOS 26.5.1 and Xcode 26.6:
+
+- Stage 2 requests `UNNotificationInterruptionLevel.timeSensitive`.
+- Before the capability fix, `make package` produced a valid `GCalNotifier Dev` signature whose effective entitlements
+  omitted `com.apple.developer.usernotifications.time-sensitive`.
+- The project now declares that entitlement as a Boolean `true`. Xcode 26.6 identifies it as a public macOS
+  application capability supported by Development and Developer ID signing, with no distribution approval required.
+- Apple documents time-sensitive notifications as immediate, sound-capable notifications that can break through
+  Notification Summary and Focus, subject to the user's notification settings.
+
+Run `make package`, then verify the signed artifact before testing O2:
+
+```bash
+codesign --verify --deep --strict --verbose=2 dist/GCalNotifier.app
+codesign -d --entitlements - dist/GCalNotifier.app
+```
+
+The second command must show `com.apple.developer.usernotifications.time-sensitive` set to `true`. O2 remains the
+manual presentation check with notifications allowed, first without Focus and then with a Focus mode enabled.
+
 ## Setup
 
 1. Run `make start`.
