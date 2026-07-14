@@ -70,6 +70,23 @@ struct NotificationSchedulerTests {
         #expect(request?.soundIsNil == true)
     }
 
+    @Test("Immediate fallback notification is visible and audible")
+    func immediateFallbackNotificationIsVisibleAndAudible() async {
+        let mockCenter = MockNotificationCenter()
+        let delegate = NotificationDelegate()
+        let scheduler = await NotificationScheduler(center: mockCenter, delegate: delegate)
+
+        await scheduler.showBannerNotification(
+            title: "Upcoming meeting",
+            body: "Planning starts soon",
+            identifier: "fallback-alert"
+        )
+
+        let request = mockCenter.pendingRequests.first
+        #expect(request?.isActive == true)
+        #expect(request?.soundIsNil == false)
+    }
+
     @Test("Schedule creates calendar trigger with correct date")
     func scheduleCreatesCalendarTriggerWithCorrectDate() async {
         let mockCenter = MockNotificationCenter()

@@ -11,6 +11,7 @@ struct CapturedNotificationRequest {
     let body: String
     let categoryIdentifier: String
     let soundIsNil: Bool
+    let isActive: Bool
     let isTimeSensitive: Bool
     let userInfo: [String: String]
     let triggerYear: Int?
@@ -27,6 +28,7 @@ struct CapturedNotificationRequest {
         self.body = request.content.body
         self.categoryIdentifier = request.content.categoryIdentifier
         self.soundIsNil = request.content.sound == nil
+        self.isActive = request.content.interruptionLevel == .active
         self.isTimeSensitive = request.content.interruptionLevel == .timeSensitive
         self.userInfo = Self.stringUserInfo(from: request.content.userInfo)
 

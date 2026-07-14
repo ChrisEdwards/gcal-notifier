@@ -176,7 +176,7 @@ public final class SettingsStore: @unchecked Sendable {
     public var suppressDuringScreenShare: Bool {
         get {
             access(keyPath: \.suppressDuringScreenShare)
-            return self.defaults.object(forKey: Keys.suppressDuringScreenShare) as? Bool ?? true
+            return self.defaults.object(forKey: Keys.suppressDuringScreenShare) as? Bool ?? false
         }
         set {
             withMutation(keyPath: \.suppressDuringScreenShare) {

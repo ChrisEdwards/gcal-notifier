@@ -95,12 +95,12 @@ struct SettingsStoreDefaultValueTests {
         #expect(store.forceAlertKeywords == ["Interview", "IMPORTANT"])
     }
 
-    @Test("Default suppressDuringScreenShare is true")
-    func suppressDuringScreenShare_defaultsToTrue() {
+    @Test("Default suppressDuringScreenShare is false")
+    func suppressDuringScreenShare_defaultsToFalse() {
         let defaults = makeTestDefaults()
         let store = SettingsStore(defaults: defaults)
 
-        #expect(store.suppressDuringScreenShare == true)
+        #expect(store.suppressDuringScreenShare == false)
     }
 
     @Test("Default shortcutsEnabled is true")
@@ -311,7 +311,7 @@ struct SettingsStoreValueUpdateTests {
         #expect(store.blockedKeywords == ["lunch"])
         #expect(store.forceAlertKeywords == ["Interview", "IMPORTANT"]) // Default unchanged
         #expect(store.launchAtLogin == false)
-        #expect(store.suppressDuringScreenShare == true) // Default unchanged
+        #expect(store.suppressDuringScreenShare == false) // Default unchanged
     }
 }
 

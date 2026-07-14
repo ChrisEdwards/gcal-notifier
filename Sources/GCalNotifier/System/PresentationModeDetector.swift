@@ -59,10 +59,29 @@ public final class PresentationModeDetector {
     // MARK: - Dependencies
 
     private let logger = Logger.app
+    private let displayMirroringProvider: () -> Bool
+    private let windowInfoProvider: () -> [[String: Any]]
+    private let doNotDisturbProvider: () -> Bool
 
     // MARK: - Initialization
 
-    private init() {}
+    private convenience init() {
+        self.init(
+            displayMirroringProvider: Self.isAnyDisplayMirrored,
+            windowInfoProvider: Self.currentWindowInfo,
+            doNotDisturbProvider: Self.isDoNotDisturbEnabled
+        )
+    }
+
+    init(
+        displayMirroringProvider: @escaping () -> Bool,
+        windowInfoProvider: @escaping () -> [[String: Any]],
+        doNotDisturbProvider: @escaping () -> Bool
+    ) {
+        self.displayMirroringProvider = displayMirroringProvider
+        self.windowInfoProvider = windowInfoProvider
+        self.doNotDisturbProvider = doNotDisturbProvider
+    }
 
     // MARK: - Detection
 
@@ -76,7 +95,7 @@ public final class PresentationModeDetector {
     /// Returns the first detected state, or `.none` if not presenting.
     public func detect() -> PresentationModeState {
         // Check for display mirroring (most reliable detection)
-        if self.isDisplayMirrored() {
+        if self.displayMirroringProvider() {
             self.logger.debug("Detected mirrored display")
             return .displayMirrored
         }
@@ -88,7 +107,7 @@ public final class PresentationModeDetector {
         }
 
         // Check for DND (best effort)
-        if self.isDNDEnabled() {
+        if self.doNotDisturbProvider() {
             self.logger.debug("Detected Do Not Disturb mode")
             return .doNotDisturb
         }
@@ -105,7 +124,7 @@ public final class PresentationModeDetector {
     // MARK: - Display Mirroring Detection
 
     /// Checks if any display is mirrored (presenting to a projector or external display).
-    private func isDisplayMirrored() -> Bool {
+    private static func isAnyDisplayMirrored() -> Bool {
         // Get all active displays
         var displayCount: UInt32 = 0
         CGGetActiveDisplayList(0, nil, &displayCount)
@@ -130,7 +149,7 @@ public final class PresentationModeDetector {
         // the characteristic window that macOS creates during screen capture.
         // This is a heuristic approach since there's no direct API.
 
-        let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        let windowList = self.windowInfoProvider()
 
         for window in windowList {
             // Check for SystemUIServer windows which include the recording indicator
@@ -148,22 +167,13 @@ public final class PresentationModeDetector {
                     }
                 }
             }
-
-            // Check for active screen sharing applications with overlay windows
-            let screenSharingApps = ["zoom.us", "Slack", "Microsoft Teams", "Google Chrome", "FaceTime"]
-            let ownerLower = ownerName.lowercased()
-            let hasOverlayFromSharingApp = screenSharingApps.contains { app in
-                guard ownerLower.contains(app.lowercased()) else { return false }
-                // Check if the app has an overlay window (sharing indicator)
-                guard let layer = window[kCGWindowLayer as String] as? Int else { return false }
-                return layer >= 25 // High layer windows are typically overlays/sharing indicators
-            }
-            if hasOverlayFromSharingApp {
-                return true
-            }
         }
 
         return false
+    }
+
+    private static func currentWindowInfo() -> [[String: Any]] {
+        CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
     }
 
     // MARK: - Do Not Disturb Detection
@@ -172,7 +182,7 @@ public final class PresentationModeDetector {
     ///
     /// Apple does not provide a public API for DND status, so this uses
     /// indirect detection methods which may not be 100% reliable.
-    private func isDNDEnabled() -> Bool {
+    private static func isDoNotDisturbEnabled() -> Bool {
         // macOS Monterey+ stores Focus mode state in UserDefaults
         // This is not a public API and may change in future macOS versions
         let notificationCenterDefaults = UserDefaults(suiteName: "com.apple.notificationcenterui")

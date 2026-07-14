@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import GCalNotifier
@@ -142,14 +143,48 @@ struct PresentationModeDetectorTests {
         // This test verifies the detector can run without crashing
         #expect(state == .none || state.shouldSuppressAlerts)
     }
+
+    @Test("detect ignores high-layer video call windows")
+    func detectIgnoresHighLayerVideoCallWindows() {
+        for ownerName in ["Google Chrome", "Slack", "zoom.us", "Microsoft Teams", "FaceTime"] {
+            let detector = PresentationModeDetector(
+                displayMirroringProvider: { false },
+                windowInfoProvider: {
+                    [[
+                        kCGWindowOwnerName as String: ownerName,
+                        kCGWindowLayer as String: 25,
+                    ]]
+                },
+                doNotDisturbProvider: { false }
+            )
+
+            #expect(detector.detect() == .none, "Unexpected suppression for \(ownerName)")
+        }
+    }
+
+    @Test("detect recognizes the macOS screen recording indicator")
+    func detectRecognizesScreenRecordingIndicator() {
+        let detector = PresentationModeDetector(
+            displayMirroringProvider: { false },
+            windowInfoProvider: {
+                [[
+                    kCGWindowOwnerName as String: "Control Center",
+                    kCGWindowName as String: "Screen Capture",
+                ]]
+            },
+            doNotDisturbProvider: { false }
+        )
+
+        #expect(detector.detect() == .screenSharing)
+    }
 }
 
 // MARK: - Settings Integration Tests
 
 @Suite("Presentation Mode Settings Integration Tests")
 struct PresentationModeSettingsIntegrationTests {
-    @Test("suppressDuringScreenShare default is true")
-    func defaultSettingIsTrue() {
+    @Test("suppressDuringScreenShare default is false")
+    func defaultSettingIsFalse() {
         guard let defaults = UserDefaults(suiteName: "com.gcal-notifier.tests.presentation-settings") else {
             Issue.record("Failed to create UserDefaults for test")
             return
@@ -157,7 +192,7 @@ struct PresentationModeSettingsIntegrationTests {
         defaults.removePersistentDomain(forName: "com.gcal-notifier.tests.presentation-settings")
 
         let settings = SettingsStore(defaults: defaults)
-        #expect(settings.suppressDuringScreenShare == true)
+        #expect(settings.suppressDuringScreenShare == false)
 
         // Clean up
         defaults.removePersistentDomain(forName: "com.gcal-notifier.tests.presentation-settings")

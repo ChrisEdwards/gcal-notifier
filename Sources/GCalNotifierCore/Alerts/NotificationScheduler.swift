@@ -203,9 +203,9 @@ public extension NotificationScheduler {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = nil
+        content.sound = .default
         content.categoryIdentifier = Self.backToBackAlertCategory
-        content.interruptionLevel = .passive
+        content.interruptionLevel = .active
 
         let request = UNNotificationRequest(
             identifier: identifier,
