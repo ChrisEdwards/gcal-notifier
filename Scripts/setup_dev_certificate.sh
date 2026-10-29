@@ -55,8 +55,9 @@ openssl req -x509 -newkey rsa:2048 \
     2>/dev/null
 
 # Convert to PKCS12 format for import (with a temporary password, required by macOS)
+# Use the system LibreSSL: OpenSSL 3+ defaults to PKCS12 encryption that `security import` rejects.
 TEMP_PASS="temp$$"
-openssl pkcs12 -export \
+/usr/bin/openssl pkcs12 -export \
     -out "${TEMP_DIR}/cert.p12" \
     -inkey "${TEMP_DIR}/key.pem" \
     -in "${TEMP_DIR}/cert.pem" \

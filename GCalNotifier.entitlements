@@ -10,6 +10,10 @@
     <key>com.apple.security.network.client</key>
     <true/>
 
+    <!-- Loopback listener for the OAuth callback (port 8089) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
     <!-- Allow urgent Stage 2 notifications to break through Focus when the user permits it -->
     <key>com.apple.developer.usernotifications.time-sensitive</key>
     <true/>
